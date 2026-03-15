@@ -213,13 +213,13 @@ async function installClaude(config, accessKey, installName, agentId) {
     "http",
     "--scope",
     scope,
-    "--header",
-    `x-memory-key: ${accessKey}`
+    config.serverName,
+    config.url
   ];
+  addArgs.push("--header", `x-memory-key: ${accessKey}`);
   if (config.clientId) {
     addArgs.push("--header", `x-memory-client-id: ${config.clientId}`);
   }
-  addArgs.push(config.serverName, config.url);
   run("claude", addArgs);
 
   const installRecord = {
