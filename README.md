@@ -2,6 +2,15 @@
 
 Provider-agnostic memory and recall system inspired by OpenViking, built around a Supabase backend and an MCP-compatible edge surface.
 
+This repository now includes production-readiness hardening for small-team internal use:
+
+- Scoped client authentication with optional shared admin keys
+- Server-side namespace enforcement
+- Structured runtime errors with stable categories and request IDs
+- Health and readiness endpoints
+- Transient upstream retry/backoff and lightweight in-memory rate limiting
+- Release, smoke-test, and CI conventions
+
 ## Current status
 
 This repository includes:
@@ -90,6 +99,36 @@ npm test
 
 The test suite uses the in-memory adapter, so it runs without Supabase.
 
+## Runtime auth model
+
+The edge function supports two credential modes:
+
+- Shared admin key via `MEMORY_MCP_ACCESS_KEY` or `MEMORY_MCP_ACCESS_KEYS`
+- Scoped clients via `MEMORY_MCP_CLIENTS_JSON`
+
+Example client configuration:
+
+```json
+[
+  {
+    "client_id": "codex-desktop",
+    "secret": "replace-me",
+    "namespace": {
+      "scope": "workspace",
+      "workspace_id": "/Users/matthewantone/CurrentDevProjects/AI/ai-memory",
+      "tags": ["shared"]
+    }
+  }
+]
+```
+
+Scoped clients should send:
+
+- `x-memory-key: <client secret>`
+- `x-memory-client-id: <client id>`
+
+Admin callers may still use `x-memory-key` or `Authorization: Bearer <key>`.
+
 ## Supabase setup checklist
 
 When you continue on another machine, these are the next steps:
@@ -100,7 +139,7 @@ When you continue on another machine, these are the next steps:
 4. Set edge secrets for:
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
-   - `MEMORY_MCP_ACCESS_KEY`
+   - One of `MEMORY_MCP_ACCESS_KEY`, `MEMORY_MCP_ACCESS_KEYS`, or `MEMORY_MCP_CLIENTS_JSON`
 5. Deploy `supabase/functions/memory-mcp`.
 6. Create an access key for the MCP surface and set `MEMORY_MCP_ACCESS_KEY` for your MCP host.
 7. Point your MCP client or agent at the deployed edge endpoint.
@@ -142,9 +181,22 @@ The edge function expects:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `MEMORY_MCP_ACCESS_KEY`
+- One of:
+  - `MEMORY_MCP_ACCESS_KEY`
+  - `MEMORY_MCP_ACCESS_KEYS`
+  - `MEMORY_MCP_CLIENTS_JSON`
+- Optional:
+  - `MEMORY_RATE_LIMIT_WINDOW_MS`
+  - `MEMORY_RATE_LIMIT_MAX_REQUESTS`
 
 The edge function rejects oversized or overly expensive MCP requests with schema validation before they hit the database. Current limits cap search fan-out and embedding/document payload sizes.
+
+## Operations
+
+- `GET /healthz` returns a lightweight process health response.
+- `GET /readyz` verifies the function can still reach Supabase.
+- `npm run smoke:mcp` runs a basic MCP lifecycle smoke test against a deployed edge endpoint.
+- `RELEASE.md` describes the release and rollback checklist.
 
 ## Notes and constraints
 

@@ -3,9 +3,12 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
+import { asToolErrorResult, asToolResult } from "../../../src/core/mcp-format.js";
+import { loadRuntimePolicy, sanitizeRuntimePolicy, authenticateRequest, enforceNamespace, assertNamespaceAccess, InMemoryRateLimiter, getRequestId } from "../../../src/core/runtime-auth.js";
+import { errorPayload, normalizeError, upstreamError } from "../../../src/core/runtime-errors.js";
+import { MemoryService } from "../../../src/core/service.js";
+import { SupabaseRestStore } from "../../../src/storage/supabase-rest-store.js";
 import {
-  getRequiredAccessKey,
-  hasValidAccessKey,
   memoryGetSchema,
   memoryIngestSchema,
   memoryLinkSchema,
@@ -14,116 +17,203 @@ import {
   memorySearchSchema,
   memoryWriteSchema
 } from "../../../src/core/mcp-security.js";
-import { asToolResult } from "../../../src/core/mcp-format.js";
-import { MemoryService } from "../../../src/core/service.js";
-import { SupabaseRestStore } from "../../../src/storage/supabase-rest-store.js";
 
-const MEMORY_MCP_ACCESS_KEY = getRequiredAccessKey(Deno.env);
-
+const runtimePolicy = loadRuntimePolicy(Deno.env);
+const rateLimiter = new InMemoryRateLimiter(runtimePolicy.rateLimit);
 const store = new SupabaseRestStore({
   url: Deno.env.get("SUPABASE_URL") ?? "",
   serviceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 });
 
-function createMemoryServer() {
+console.log(JSON.stringify({
+  level: "info",
+  event: "memory_mcp.startup",
+  ...sanitizeRuntimePolicy(runtimePolicy, Deno.env)
+}));
+
+function createMemoryServer(requestContext: Record<string, unknown>) {
   const service = new MemoryService(store);
   const server = new McpServer({
     name: "supabase-mcp-memory",
     version: "0.1.0"
   });
 
-  server.registerTool(
-    "memory.write",
-    {
-      title: "Write Memory",
-      description: "Persist a durable memory item with optional embedding and links.",
-      inputSchema: memoryWriteSchema.shape
-    },
-    async (args) => asToolResult(await service.writeMemory(args))
-  );
+  registerTool(server, service, requestContext, "memory.write", {
+    title: "Write Memory",
+    description: "Persist a durable memory item with optional embedding and links.",
+    schema: memoryWriteSchema
+  }, async (args, context) => {
+    const namespace = enforceNamespace(args.namespace, context);
+    return service.writeMemory({ ...args, namespace }, context);
+  });
 
-  server.registerTool(
-    "memory.search",
-    {
-      title: "Search Memory",
-      description: "Search memories using lexical or hybrid ranking with optional graph expansion.",
-      inputSchema: memorySearchSchema.shape
-    },
-    async (args) => asToolResult(await service.searchMemory(args))
-  );
+  registerTool(server, service, requestContext, "memory.search", {
+    title: "Search Memory",
+    description: "Search memories using lexical or hybrid ranking with optional graph expansion.",
+    schema: memorySearchSchema
+  }, async (args, context) => {
+    const namespace = enforceNamespace(args.namespace, context);
+    return service.searchMemory({ ...args, namespace }, context);
+  });
 
-  server.registerTool(
-    "memory.get",
-    {
-      title: "Get Memory",
-      description: "Fetch one memory item by id.",
-      inputSchema: memoryGetSchema.shape
-    },
-    async (args) => asToolResult(await service.getMemory(args))
-  );
+  registerTool(server, service, requestContext, "memory.get", {
+    title: "Get Memory",
+    description: "Fetch one memory item by id.",
+    schema: memoryGetSchema
+  }, async (args, context) => service.getMemory(args, context));
 
-  server.registerTool(
-    "memory.link",
-    {
-      title: "Link Memory",
-      description: "Create a typed relationship between two memory items.",
-      inputSchema: memoryLinkSchema.shape
-    },
-    async (args) => asToolResult(await service.linkMemory(args))
-  );
+  registerTool(server, service, requestContext, "memory.link", {
+    title: "Link Memory",
+    description: "Create a typed relationship between two memory items.",
+    schema: memoryLinkSchema
+  }, async (args, context) => service.linkMemory(args, context));
 
-  server.registerTool(
-    "memory.ingest_document",
-    {
-      title: "Ingest Document",
-      description: "Store a document and deterministic chunks with optional chunk embeddings.",
-      inputSchema: memoryIngestSchema.shape
-    },
-    async (args) => asToolResult(await service.ingestDocument(args))
-  );
+  registerTool(server, service, requestContext, "memory.ingest_document", {
+    title: "Ingest Document",
+    description: "Store a document and deterministic chunks with optional chunk embeddings.",
+    schema: memoryIngestSchema
+  }, async (args, context) => {
+    const namespace = enforceNamespace(args.namespace, context);
+    return service.ingestDocument({ ...args, namespace }, context);
+  });
 
-  server.registerTool(
-    "memory.list_recent",
-    {
-      title: "List Recent Memory",
-      description: "List recently created or recalled memory items.",
-      inputSchema: memoryListRecentSchema.shape
-    },
-    async (args) => asToolResult(await service.listRecent(args))
-  );
+  registerTool(server, service, requestContext, "memory.list_recent", {
+    title: "List Recent Memory",
+    description: "List recently created or recalled memory items.",
+    schema: memoryListRecentSchema
+  }, async (args, context) => {
+    const namespace = enforceNamespace(args.namespace, context);
+    return service.listRecent({ ...args, namespace }, context);
+  });
 
-  server.registerTool(
-    "memory.promote_summary",
-    {
-      title: "Promote Summary",
-      description: "Promote a source memory item into a summary item linked back to its origin.",
-      inputSchema: memoryPromoteSchema.shape
-    },
-    async (args) => asToolResult(await service.promoteSummary(args))
-  );
+  registerTool(server, service, requestContext, "memory.promote_summary", {
+    title: "Promote Summary",
+    description: "Promote a source memory item into a summary item linked back to its origin.",
+    schema: memoryPromoteSchema
+  }, async (args, context) => {
+    if (args.namespace) {
+      args = { ...args, namespace: enforceNamespace(args.namespace, context) };
+    }
+    return service.promoteSummary(args, context);
+  });
 
   return server;
 }
 
+function registerTool(server, service, requestContext, name, definition, handler) {
+  server.registerTool(
+    name,
+    {
+      title: definition.title,
+      description: definition.description,
+      inputSchema: definition.schema.shape
+    },
+    async (args) => {
+      const startedAt = Date.now();
+      try {
+        const parsed = definition.schema.parse(args);
+        const result = await handler(parsed, requestContext, service);
+        logRequest("info", {
+          event: "memory_mcp.tool",
+          tool: name,
+          request_id: requestContext.requestId,
+          client_id: requestContext.clientId,
+          duration_ms: Date.now() - startedAt,
+          result_type: Array.isArray(result) ? "array" : typeof result
+        });
+        return asToolResult(result);
+      } catch (error) {
+        const normalized = normalizeError(error, requestContext.requestId);
+        logRequest("error", {
+          event: "memory_mcp.tool_error",
+          tool: name,
+          request_id: requestContext.requestId,
+          client_id: requestContext.clientId,
+          duration_ms: Date.now() - startedAt,
+          error_category: normalized.category,
+          error_code: normalized.code,
+          message: normalized.message
+        });
+        return asToolErrorResult(errorPayload(normalized).error);
+      }
+    }
+  );
+}
+
 Deno.serve(async (request: Request) => {
-  if (!hasValidAccessKey(request, MEMORY_MCP_ACCESS_KEY)) {
-    return new Response(JSON.stringify({ error: "Invalid or missing access key" }), {
-      status: 401,
-      headers: { "content-type": "application/json" }
+  const requestId = getRequestId(request);
+  const url = new URL(request.url);
+
+  if (request.method === "GET" && url.pathname.endsWith("/healthz")) {
+    return jsonResponse({
+      ok: true,
+      service: "supabase-mcp-memory",
+      version: "0.1.0",
+      request_id: requestId
     });
   }
 
-  let parsedBody: unknown = undefined;
-  try {
-    parsedBody = await request.clone().json();
-  } catch {
-    // Leave parsedBody undefined for non-JSON requests.
+  if (request.method === "GET" && url.pathname.endsWith("/readyz")) {
+    try {
+      await store.healthCheck();
+      return jsonResponse({
+        ok: true,
+        service: "supabase-mcp-memory",
+        version: "0.1.0",
+        request_id: requestId
+      });
+    } catch (error) {
+      const normalized = normalizeError(upstreamError("Supabase readiness check failed"), requestId);
+      return jsonResponse(errorPayload(normalized), normalized.status);
+    }
   }
 
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    enableJsonResponse: true
-  });
-  const server = createMemoryServer();
-  await server.connect(transport);
-  return await transport.handleRequest(request, { parsedBody });
+  try {
+    const caller = authenticateRequest(request, runtimePolicy);
+    rateLimiter.consume(caller.clientId);
+    const requestContext = {
+      ...caller,
+      assertNamespaceAccess: (namespace) => assertNamespaceAccess(namespace, caller)
+    };
+
+    let parsedBody: unknown = undefined;
+    try {
+      parsedBody = await request.clone().json();
+    } catch {
+      // Leave parsedBody undefined for non-JSON requests.
+    }
+
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      enableJsonResponse: true
+    });
+    const server = createMemoryServer(requestContext);
+    await server.connect(transport);
+    return await transport.handleRequest(request, { parsedBody });
+  } catch (error) {
+    const normalized = normalizeError(error, requestId);
+    logRequest("error", {
+      event: "memory_mcp.request_error",
+      request_id: requestId,
+      error_category: normalized.category,
+      error_code: normalized.code,
+      message: normalized.message
+    });
+    return jsonResponse(errorPayload(normalized), normalized.status);
+  }
 });
+
+function jsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "content-type": "application/json"
+    }
+  });
+}
+
+function logRequest(level: string, payload: Record<string, unknown>) {
+  console.log(JSON.stringify({
+    level,
+    ...payload
+  }));
+}

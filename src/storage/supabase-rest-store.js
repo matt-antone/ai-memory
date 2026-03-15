@@ -1,3 +1,5 @@
+import { upstreamError } from "../core/runtime-errors.js";
+
 function createHeaders(apiKey) {
   return {
     apikey: apiKey,
@@ -12,7 +14,10 @@ async function parseResponse(response) {
   const data = text ? JSON.parse(text) : null;
 
   if (!response.ok) {
-    throw new Error(data?.message || data?.error || `Supabase request failed with status ${response.status}`);
+    throw upstreamError(
+      data?.message || data?.error || `Supabase request failed with status ${response.status}`,
+      { status: response.status }
+    );
   }
 
   return data;
@@ -30,8 +35,18 @@ export class SupabaseRestStore {
     this.headers = createHeaders(serviceRoleKey);
   }
 
+  async healthCheck() {
+    const response = await this.request(`${this.url}/rest/v1/memory_items?select=id&limit=1`, {
+      headers: this.headers
+    });
+    await parseResponse(response);
+    return {
+      ok: true
+    };
+  }
+
   async createItem(item) {
-    const response = await this.fetch(`${this.url}/rest/v1/memory_items`, {
+    const response = await this.request(`${this.url}/rest/v1/memory_items`, {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify(item)
@@ -41,7 +56,7 @@ export class SupabaseRestStore {
   }
 
   async createEmbedding(record) {
-    const response = await this.fetch(`${this.url}/rest/v1/memory_embeddings`, {
+    const response = await this.request(`${this.url}/rest/v1/memory_embeddings`, {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify(record)
@@ -51,7 +66,7 @@ export class SupabaseRestStore {
   }
 
   async createEdge(edge) {
-    const response = await this.fetch(`${this.url}/rest/v1/memory_edges`, {
+    const response = await this.request(`${this.url}/rest/v1/memory_edges`, {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify(edge)
@@ -61,7 +76,7 @@ export class SupabaseRestStore {
   }
 
   async createEvent(event) {
-    const response = await this.fetch(`${this.url}/rest/v1/memory_events`, {
+    const response = await this.request(`${this.url}/rest/v1/memory_events`, {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify(event)
@@ -71,7 +86,7 @@ export class SupabaseRestStore {
   }
 
   async getItem(id) {
-    const response = await this.fetch(
+    const response = await this.request(
       `${this.url}/rest/v1/memory_items?id=eq.${encodeURIComponent(id)}&select=*`,
       { headers: this.headers }
     );
@@ -80,7 +95,7 @@ export class SupabaseRestStore {
   }
 
   async updateItem(id, patch) {
-    const response = await this.fetch(
+    const response = await this.request(
       `${this.url}/rest/v1/memory_items?id=eq.${encodeURIComponent(id)}`,
       {
         method: "PATCH",
@@ -97,7 +112,7 @@ export class SupabaseRestStore {
   }
 
   async listRecent({ namespace, limit = 10 } = {}) {
-    const response = await this.fetch(
+    const response = await this.request(
       `${this.url}/rest/v1/memory_items?select=*&is_archived=eq.false&order=last_accessed_at.desc.nullslast,created_at.desc&limit=${limit}`,
       { headers: this.headers }
     );
@@ -106,7 +121,7 @@ export class SupabaseRestStore {
   }
 
   async searchCandidates({ query, queryEmbedding, namespace, filters, mode, limit = 10 }) {
-    const response = await this.fetch(`${this.url}/rest/v1/rpc/memory_search`, {
+    const response = await this.request(`${this.url}/rest/v1/rpc/memory_search`, {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify({
@@ -129,7 +144,7 @@ export class SupabaseRestStore {
   }
 
   async expandEdges({ itemIds, depth = 1 }) {
-    const response = await this.fetch(`${this.url}/rest/v1/rpc/memory_expand_context`, {
+    const response = await this.request(`${this.url}/rest/v1/rpc/memory_expand_context`, {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify({
@@ -138,6 +153,23 @@ export class SupabaseRestStore {
       })
     });
     return parseResponse(response);
+  }
+
+  async request(url, init = {}, attempt = 0) {
+    try {
+      const response = await this.fetch(url, init);
+      if (shouldRetryResponse(response.status) && attempt < 2) {
+        await wait(backoffMs(attempt));
+        return this.request(url, init, attempt + 1);
+      }
+      return response;
+    } catch (error) {
+      if (attempt >= 2 || !isTransientNetworkError(error)) {
+        throw upstreamError(error instanceof Error ? error.message : "Supabase request failed");
+      }
+      await wait(backoffMs(attempt));
+      return this.request(url, init, attempt + 1);
+    }
   }
 }
 
@@ -152,4 +184,23 @@ function matchesNamespace(itemNamespace = {}, requestedNamespace = {}) {
     }
     return itemNamespace?.[key] === value;
   });
+}
+
+function shouldRetryResponse(status) {
+  return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function isTransientNetworkError(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return /timed out|timeout|network|fetch|reset|econn|temporar/i.test(error.message);
+}
+
+function backoffMs(attempt) {
+  return 100 * (attempt + 1) * (attempt + 1);
+}
+
+function wait(durationMs) {
+  return new Promise((resolve) => setTimeout(resolve, durationMs));
 }

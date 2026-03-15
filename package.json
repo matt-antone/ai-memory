@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test tests/*.js",
+    "test:integration": "node --test tests/live-supabase.integration.test.js",
+    "smoke:mcp": "node scripts/mcp-smoke-test.mjs"
   },
   "dependencies": {
     "zod": "^4.1.13"

@@ -19,3 +19,10 @@ export function asToolResult(result) {
     structuredContent: toStructuredContent(result)
   };
 }
+
+export function asToolErrorResult(error) {
+  return asToolResult({
+    ok: false,
+    error
+  });
+}

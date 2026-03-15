@@ -36,6 +36,7 @@ If you are starting fresh, initialize Supabase in the repo first.
 Apply the migration in:
 
 - `supabase/migrations/0001_memory.sql`
+- `supabase/migrations/0002_search_or_lexical.sql`
 
 Depending on your workflow, use either local reset/dev commands or push the migration to the linked project.
 
@@ -45,7 +46,13 @@ Set these values for the deployed function:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `MEMORY_MCP_ACCESS_KEY`
+- One of:
+  - `MEMORY_MCP_ACCESS_KEY`
+  - `MEMORY_MCP_ACCESS_KEYS`
+  - `MEMORY_MCP_CLIENTS_JSON`
+- Optional:
+  - `MEMORY_RATE_LIMIT_WINDOW_MS`
+  - `MEMORY_RATE_LIMIT_MAX_REQUESTS`
 
 ## 6. Deploy the MCP edge function
 
@@ -61,7 +68,8 @@ Supported URL formats:
 - `https://<project-ref>.supabase.co/functions/v1/memory-mcp`
 
 Configure the access key in your MCP host as `MEMORY_MCP_ACCESS_KEY` and send it as the `x-memory-key` header.
-The edge function fails closed if this secret is missing or blank.
+Scoped clients should also send `x-memory-client-id`.
+The edge function fails closed if no valid key or client credential is configured.
 
 ## 7. Register the MCP server in Codex
 
@@ -87,6 +95,17 @@ Test these flows first:
 - `memory.write`
 - `memory.search`
 - `memory.ingest_document`
+- `GET /healthz`
+- `GET /readyz`
+
+If you have the endpoint and credentials locally, you can run:
+
+```bash
+MEMORY_MCP_SMOKE_URL="https://<project-ref>.supabase.co/functions/v1/memory-mcp" \
+MEMORY_MCP_ACCESS_KEY="..." \
+MEMORY_MCP_CLIENT_ID="optional-client-id" \
+npm run smoke:mcp
+```
 
 ## 9. Suggested first real test
 
@@ -99,5 +118,12 @@ Test these flows first:
 ## Current caveats
 
 - Client setup is separate from backend deploy, so a healthy edge function can still be invisible to an MCP host until that host reloads its config and environment
-- Tests currently run against the in-memory store, not a real Supabase instance
+- Live Supabase integration tests are opt-in and require integration environment variables
 - Embeddings are optional and caller-supplied in v1
+
+## Promotion and rollback
+
+- Promote changes through local -> staging -> production.
+- Block production promotion if `/readyz` or `npm run smoke:mcp` fails in staging.
+- Prefer additive database changes and forward fixes after a migration is applied.
+- If the edge runtime regresses, redeploy the previous function version and roll back MCP host config to the previous tag.

@@ -16,7 +16,7 @@ export class MemoryService {
     this.clock = options.clock ?? (() => new Date());
   }
 
-  async writeMemory(input) {
+  async writeMemory(input, context = {}) {
     validateWriteInput(input);
     const namespace = normalizeNamespace(input.namespace);
     const now = this.clock().toISOString();
@@ -57,7 +57,7 @@ export class MemoryService {
           to_id: link.to_id,
           edge_type: link.edge_type,
           metadata: link.metadata ?? {}
-        });
+        }, context);
       }
     }
 
@@ -65,14 +65,19 @@ export class MemoryService {
       id: createId("evt"),
       item_id: item.id,
       event_type: "memory.created",
-      payload: { kind: item.kind, source_ref: item.source_ref },
+      payload: {
+        kind: item.kind,
+        source_ref: item.source_ref,
+        actor: buildActor(context),
+        request_id: context.requestId ?? null
+      },
       created_at: now
     });
 
     return created;
   }
 
-  async searchMemory(input) {
+  async searchMemory(input, context = {}) {
     validateSearchInput(input);
     const hasQueryEmbedding = Array.isArray(input.query_embedding) && input.query_embedding.length > 0;
     const mode = normalizeSearchMode(input.mode, hasQueryEmbedding);
@@ -110,32 +115,65 @@ export class MemoryService {
       });
     }
 
-    let context = [];
+    let expandedContext = [];
     if ((input.expand_depth ?? 0) > 0 && hits.length > 0) {
-      context = await this.store.expandEdges({
+      expandedContext = await this.store.expandEdges({
         itemIds: hits.map((hit) => hit.item.id),
         depth: input.expand_depth
       });
     }
 
+    await this.store.createEvent({
+      id: createId("evt"),
+      item_id: null,
+      event_type: "memory.search",
+      payload: {
+        actor: buildActor(context),
+        request_id: context.requestId ?? null,
+        namespace,
+        mode,
+        query: input.query,
+        result_count: hits.length
+      },
+      created_at: this.clock().toISOString()
+    });
+
     return {
       mode_used: mode,
       query: input.query,
       hits,
-      context
+      context: expandedContext
     };
   }
 
-  async getMemory(input) {
+  async getMemory(input, context = {}) {
     const item = await this.store.getItem(input.id);
     if (!item) {
       throw new Error(`memory item not found: ${input.id}`);
     }
+    context.assertNamespaceAccess?.(item.namespace);
+    await this.store.createEvent({
+      id: createId("evt"),
+      item_id: item.id,
+      event_type: "memory.get",
+      payload: {
+        actor: buildActor(context),
+        request_id: context.requestId ?? null
+      },
+      created_at: this.clock().toISOString()
+    });
     return item;
   }
 
-  async linkMemory(input) {
+  async linkMemory(input, context = {}) {
     validateLinkInput(input);
+    const from = await this.store.getItem(input.from_id);
+    const to = await this.store.getItem(input.to_id);
+    if (!from || !to) {
+      throw new Error("from_id and to_id must reference existing memory items");
+    }
+    context.assertNamespaceAccess?.(from.namespace);
+    context.assertNamespaceAccess?.(to.namespace);
     const now = this.clock().toISOString();
     const edge = {
       id: createId("edge"),
@@ -150,13 +188,17 @@ export class MemoryService {
       id: createId("evt"),
       item_id: input.from_id,
       event_type: "memory.linked",
-      payload: edge,
+      payload: {
+        ...edge,
+        actor: buildActor(context),
+        request_id: context.requestId ?? null
+      },
       created_at: now
     });
     return edge;
   }
 
-  async ingestDocument(input) {
+  async ingestDocument(input, context = {}) {
     validateIngestInput(input);
     const namespace = normalizeNamespace(input.namespace);
     const document = await this.writeMemory({
@@ -175,7 +217,7 @@ export class MemoryService {
       namespace,
       tags: input.tags,
       importance: input.importance
-    });
+    }, context);
 
     const chunks = chunkText(input.content, {
       chunkSize: input.chunk_size,
@@ -203,14 +245,14 @@ export class MemoryService {
         importance: input.importance,
         embedding,
         embedding_model: embedding ? input.embedding_model ?? "caller-supplied" : undefined
-      });
+      }, context);
 
       await this.linkMemory({
         from_id: chunkItem.id,
         to_id: document.id,
         edge_type: "belongs_to",
         metadata: { chunk_index: chunk.index }
-      });
+      }, context);
 
       createdChunks.push(chunkItem);
     }
@@ -221,16 +263,30 @@ export class MemoryService {
     };
   }
 
-  async listRecent(input = {}) {
+  async listRecent(input = {}, context = {}) {
     const namespace = normalizeNamespace(input.namespace);
-    return this.store.listRecent({
+    const items = await this.store.listRecent({
       namespace,
       limit: input.limit ?? 10
     });
+    await this.store.createEvent({
+      id: createId("evt"),
+      item_id: null,
+      event_type: "memory.list_recent",
+      payload: {
+        actor: buildActor(context),
+        request_id: context.requestId ?? null,
+        namespace,
+        limit: input.limit ?? 10,
+        result_count: items.length
+      },
+      created_at: this.clock().toISOString()
+    });
+    return items;
   }
 
-  async promoteSummary(input) {
-    const source = await this.getMemory({ id: input.source_id });
+  async promoteSummary(input, context = {}) {
+    const source = await this.getMemory({ id: input.source_id }, context);
     const namespace = normalizeNamespace(input.namespace ?? source.namespace);
     const summary = await this.writeMemory({
       content: input.content,
@@ -244,14 +300,14 @@ export class MemoryService {
       namespace,
       tags: source.tags,
       importance: normalizeImportance(input.importance, Math.max(0.8, Number(source.importance || 0)))
-    });
+    }, context);
 
     await this.linkMemory({
       from_id: summary.id,
       to_id: source.id,
       edge_type: "derived_from",
       metadata: {}
-    });
+    }, context);
 
     return summary;
   }
@@ -263,4 +319,16 @@ function normalizeImportance(value, fallback = 0.5) {
     return fallback;
   }
   return Math.max(0, Math.min(1, numeric));
+}
+
+function buildActor(context = {}) {
+  if (!context.clientId) {
+    return null;
+  }
+
+  return {
+    client_id: context.clientId,
+    role: context.role ?? "service",
+    auth_mode: context.authMode ?? null
+  };
 }
