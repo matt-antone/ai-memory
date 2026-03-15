@@ -202,6 +202,7 @@ function run(command, args, options = {}) {
   console.log(`\n> ${command} ${args.join(" ")}`);
   if (options.interactive) {
     rl.close();
+    input.resume();
   }
   const result = spawnSync(command, args, {
     stdio: "inherit",
