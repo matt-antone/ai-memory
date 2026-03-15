@@ -1,8 +1,8 @@
 function createHeaders(clientId, options = {}) {
-  const { envStyle = "plain" } = options;
+  const { envStyle = "plain", accessKey = "" } = options;
   const envRef = (name) => envStyle === "cursor" ? `\${env:${name}}` : `\${${name}}`;
   const headers = {
-    "x-memory-key": envRef("MEMORY_MCP_ACCESS_KEY")
+    "x-memory-key": accessKey || envRef("MEMORY_MCP_ACCESS_KEY")
   };
 
   if (clientId) {
@@ -93,16 +93,23 @@ export function removeJsonServerConfig(content, serverName) {
   return `${JSON.stringify(data, null, 2)}\n`;
 }
 
-function codexBlock(serverName, url, clientId) {
+function codexBlock(serverName, url, clientId, options = {}) {
+  const { accessKey = "" } = options;
   const lines = [
     "# >>> ai-memory managed block >>>",
     `[mcp_servers.${serverName}]`,
-    `url = "${url}"`,
-    'bearer_token_env_var = "MEMORY_MCP_ACCESS_KEY"',
+    `url = "${url}"`
+  ];
+
+  if (!accessKey) {
+    lines.push('bearer_token_env_var = "MEMORY_MCP_ACCESS_KEY"');
+  }
+
+  lines.push(
     "",
     `[mcp_servers.${serverName}.http_headers]`,
-    'x-memory-key = "MCP_BEARER_TOKEN"'
-  ];
+    accessKey ? `x-memory-key = "${accessKey}"` : 'x-memory-key = "MCP_BEARER_TOKEN"'
+  );
 
   if (clientId) {
     lines.push(`x-memory-client-id = "${clientId}"`);
@@ -173,7 +180,7 @@ export function inspectCodexConfig(content, serverName) {
   };
 }
 
-export function upsertCodexConfig(content, serverName, url, clientId = "") {
+export function upsertCodexConfig(content, serverName, url, clientId = "", options = {}) {
   let lines = parseCodexLines(content);
   lines = stripManagedCodexBlock(lines);
   lines = stripCodexServerSection(lines, serverName);
@@ -183,7 +190,7 @@ export function upsertCodexConfig(content, serverName, url, clientId = "") {
   if (cleaned) {
     pieces.push(cleaned);
   }
-  pieces.push(codexBlock(serverName, url, clientId));
+  pieces.push(codexBlock(serverName, url, clientId, options));
   return `${pieces.join("\n\n").replace(/\n{3,}/g, "\n\n")}\n`;
 }
 

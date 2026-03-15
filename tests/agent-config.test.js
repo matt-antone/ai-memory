@@ -31,6 +31,16 @@ value = "keep"
   assert.match(next, /# >>> ai-memory managed block >>>/);
 });
 
+test("codex upsert can embed a literal access key for user-level installs", () => {
+  const next = upsertCodexConfig("", "ai-memory", "https://example.test", "client-a", {
+    accessKey: "secret-123"
+  });
+
+  assert.match(next, /x-memory-key = "secret-123"/);
+  assert.doesNotMatch(next, /bearer_token_env_var/);
+  assert.match(next, /x-memory-client-id = "client-a"/);
+});
+
 test("codex inspect recognizes managed and unmanaged entries", () => {
   const managed = upsertCodexConfig("", "ai-memory", "https://example.test", "");
   const unmanaged = `
