@@ -69,3 +69,6 @@ echo
 echo
 echo "Verifying registration:"
 claude mcp get --scope "$scope" "$SERVER_NAME" || claude mcp list
+echo
+echo "Launch Claude with the required ai-memory environment exported:"
+echo "  cd \"$PWD\" && set -a && source .env && set +a && claude"

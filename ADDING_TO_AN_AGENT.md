@@ -184,6 +184,11 @@ Notes:
 - the single quotes preserve `${...}` so Claude can expand environment variables when it reads `.mcp.json`
 - if you want the server available across all repos instead, use `--scope user`
 - after adding the server, run `claude mcp list` or `claude mcp get ai-memory` to verify it was registered
+- when the script finishes, launch Claude from the repo with:
+
+```bash
+cd "/absolute/path/to/project" && set -a && source .env && set +a && claude
+```
 
 For this repo, a checked-in `.mcp.json` entry can look like this:
 
