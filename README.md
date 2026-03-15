@@ -222,3 +222,4 @@ The edge function rejects oversized or overly expensive MCP requests with schema
 - Embeddings are caller-supplied when available
 - If stored items have no embeddings, they remain searchable lexically
 - The current tests verify behavior through the service layer, not against a live Supabase instance
+
