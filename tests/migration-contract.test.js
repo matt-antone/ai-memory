@@ -47,7 +47,7 @@ test("sql namespace matching applies requested namespace tags", async () => {
 
   assert.match(
     sql,
-    /coalesce\(item_namespace->'tags', '\[\]'::jsonb\) @> requested->'tags'/
+    /coalesce\(item_namespace->'tags', '\[\]'::jsonb\) @> \(requested->'tags'\)/
   );
 });
 

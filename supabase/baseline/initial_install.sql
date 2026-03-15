@@ -154,7 +154,7 @@ as $$
     and (
       requested->'tags' is null
       or jsonb_typeof(requested->'tags') <> 'array'
-      or coalesce(item_namespace->'tags', '[]'::jsonb) @> requested->'tags'
+      or coalesce(item_namespace->'tags', '[]'::jsonb) @> (requested->'tags')
     );
 $$;
 
