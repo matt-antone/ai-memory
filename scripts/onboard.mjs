@@ -19,7 +19,7 @@ if (args.has("--help") || args.has("-h")) {
   process.exit(0);
 }
 
-const rl = readline.createInterface({ input, output });
+let rl = createPromptInterface();
 
 try {
   console.log("AI Memory onboarding");
@@ -71,7 +71,7 @@ try {
   console.log(`\nUpdated local env file: ${envPath}`);
 
   if (await confirm("Run `supabase login` now if needed?", false)) {
-    run("supabase", ["login"]);
+    run("supabase", ["login"], { interactive: true });
   }
 
   if (await confirm("Link this repo to the Supabase project now?", false)) {
@@ -123,13 +123,13 @@ try {
       break;
     }
     if (agent === "claude") {
-      run("npm", ["run", "setup:claude"], { env: setupEnv });
+      run("npm", ["run", "setup:claude"], { env: setupEnv, interactive: true });
     } else if (agent === "codex") {
-      run("npm", ["run", "setup:codex"], { env: setupEnv });
+      run("npm", ["run", "setup:codex"], { env: setupEnv, interactive: true });
     } else if (agent === "cursor") {
-      run("npm", ["run", "setup:cursor"], { env: setupEnv });
+      run("npm", ["run", "setup:cursor"], { env: setupEnv, interactive: true });
     } else if (agent === "openclaw") {
-      run("npm", ["run", "setup:openclaw"], { env: setupEnv });
+      run("npm", ["run", "setup:openclaw"], { env: setupEnv, interactive: true });
     } else if (agent) {
       console.warn(`Skipping unknown agent: ${agent}`);
     }
@@ -150,7 +150,7 @@ try {
   console.log(`Endpoint: ${endpoint}`);
   console.log("If Codex or Claude was already open, restart it so it reloads MCP config.");
 } finally {
-  rl.close();
+  rl?.close();
 }
 
 function printHelp() {
@@ -193,15 +193,25 @@ async function choose(label, options, fallbackKey) {
 
 function run(command, args, options = {}) {
   console.log(`\n> ${command} ${args.join(" ")}`);
+  if (options.interactive) {
+    rl.close();
+  }
   const result = spawnSync(command, args, {
     stdio: "inherit",
     cwd,
     env: options.env ?? process.env
   });
+  if (options.interactive) {
+    rl = createPromptInterface();
+  }
 
   if (result.status !== 0) {
     throw new Error(`Command failed: ${command} ${args.join(" ")}`);
   }
+}
+
+function createPromptInterface() {
+  return readline.createInterface({ input, output });
 }
 
 function upsertEnvFile(filePath, values) {
