@@ -71,6 +71,21 @@ test("json upsert preserves unrelated servers", () => {
   assert.equal(parsed.mcpServers["ai-memory"].headers["x-memory-client-id"], "${MEMORY_MCP_CLIENT_ID}");
 });
 
+test("json upsert supports Cursor env interpolation and env files", () => {
+  const next = upsertJsonServerConfig(
+    "",
+    "ai-memory",
+    "https://example.test",
+    "client-a",
+    { envStyle: "cursor", envFile: "${workspaceFolder}/.env" }
+  );
+  const parsed = JSON.parse(next);
+
+  assert.equal(parsed.mcpServers["ai-memory"].headers["x-memory-key"], "${env:MEMORY_MCP_ACCESS_KEY}");
+  assert.equal(parsed.mcpServers["ai-memory"].headers["x-memory-client-id"], "${env:MEMORY_MCP_CLIENT_ID}");
+  assert.equal(parsed.mcpServers["ai-memory"].envFile, "${workspaceFolder}/.env");
+});
+
 test("json inspect recognizes managed and unmanaged entries", () => {
   const managed = upsertJsonServerConfig("", "ai-memory", "https://example.test", "");
   const unmanaged = JSON.stringify({
@@ -119,7 +134,8 @@ test("golden cursor upsert preserves unrelated config and replaces ai-memory ent
     readFixture("cursor-input.json"),
     "ai-memory",
     "https://example.test/memory",
-    "client-a"
+    "client-a",
+    { envStyle: "cursor", envFile: "${workspaceFolder}/.env" }
   );
 
   assert.equal(actual, `${readFixture("cursor-expected.json").trim()}\n`);

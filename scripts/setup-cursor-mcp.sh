@@ -19,8 +19,14 @@ if [[ -z "$scope" ]]; then
 fi
 
 case "$scope" in
-  "project/local") config_path="$local_path" ;;
-  "global/user") config_path="$global_path" ;;
+  "project/local")
+    config_path="$local_path"
+    upsert_options='{"envStyle":"cursor","envFile":"${workspaceFolder}/.env"}'
+    ;;
+  "global/user")
+    config_path="$global_path"
+    upsert_options='{"envStyle":"cursor"}'
+    ;;
   *)
     echo "Unsupported Cursor install scope: $scope" >&2
     exit 1
@@ -49,7 +55,7 @@ if [[ "$exists" == "1" ]]; then
   backup_file "$config_path" >/dev/null || true
 fi
 
-node "$SCRIPT_DIR/agent-config.mjs" json upsert "$config_path" "$SERVER_NAME" "$URL" "$CLIENT_ID"
+node "$SCRIPT_DIR/agent-config.mjs" json upsert "$config_path" "$SERVER_NAME" "$URL" "$CLIENT_ID" "$upsert_options"
 
 echo "Wrote Cursor MCP config for '$SERVER_NAME' to:"
 echo "  $config_path"

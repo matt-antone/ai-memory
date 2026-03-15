@@ -1,21 +1,29 @@
-function createHeaders(clientId) {
+function createHeaders(clientId, options = {}) {
+  const { envStyle = "plain" } = options;
+  const envRef = (name) => envStyle === "cursor" ? `\${env:${name}}` : `\${${name}}`;
   const headers = {
-    "x-memory-key": "${MEMORY_MCP_ACCESS_KEY}"
+    "x-memory-key": envRef("MEMORY_MCP_ACCESS_KEY")
   };
 
   if (clientId) {
-    headers["x-memory-client-id"] = "${MEMORY_MCP_CLIENT_ID}";
+    headers["x-memory-client-id"] = envRef("MEMORY_MCP_CLIENT_ID");
   }
 
   return headers;
 }
 
-function createJsonServerConfig(url, clientId) {
-  return {
+function createJsonServerConfig(url, clientId, options = {}) {
+  const config = {
     type: "http",
     url,
-    headers: createHeaders(clientId)
+    headers: createHeaders(clientId, options)
   };
+
+  if (options.envFile) {
+    config.envFile = options.envFile;
+  }
+
+  return config;
 }
 
 function ensureObject(value, fallback) {
@@ -47,13 +55,20 @@ function jsonServerLooksManaged(entry) {
   }
 
   const headers = ensureObject(entry.headers, {});
-  return entry.type === "http"
-    && typeof entry.url === "string"
-    && headers["x-memory-key"] === "${MEMORY_MCP_ACCESS_KEY}"
+  const usesLegacyEnvRefs = headers["x-memory-key"] === "${MEMORY_MCP_ACCESS_KEY}"
     && (
       headers["x-memory-client-id"] === undefined
       || headers["x-memory-client-id"] === "${MEMORY_MCP_CLIENT_ID}"
     );
+  const usesCursorEnvRefs = headers["x-memory-key"] === "${env:MEMORY_MCP_ACCESS_KEY}"
+    && (
+      headers["x-memory-client-id"] === undefined
+      || headers["x-memory-client-id"] === "${env:MEMORY_MCP_CLIENT_ID}"
+    );
+
+  return entry.type === "http"
+    && typeof entry.url === "string"
+    && (usesLegacyEnvRefs || usesCursorEnvRefs);
 }
 
 export function inspectJsonServerConfig(content, serverName) {
@@ -66,9 +81,9 @@ export function inspectJsonServerConfig(content, serverName) {
   };
 }
 
-export function upsertJsonServerConfig(content, serverName, url, clientId = "") {
+export function upsertJsonServerConfig(content, serverName, url, clientId = "", options = {}) {
   const data = normalizeJsonConfig(content);
-  data.mcpServers[serverName] = createJsonServerConfig(url, clientId);
+  data.mcpServers[serverName] = createJsonServerConfig(url, clientId, options);
   return `${JSON.stringify(data, null, 2)}\n`;
 }
 

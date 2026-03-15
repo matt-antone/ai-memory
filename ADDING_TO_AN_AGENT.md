@@ -198,8 +198,9 @@ For this repo, a checked-in `.mcp.json` entry can look like this:
     "ai-memory": {
       "type": "http",
       "url": "https://<project-ref>.supabase.co/functions/v1/memory-mcp",
+      "envFile": "${workspaceFolder}/.env",
       "headers": {
-        "x-memory-key": "${MEMORY_MCP_ACCESS_KEY}"
+        "x-memory-key": "${env:MEMORY_MCP_ACCESS_KEY}"
       }
     }
   }
@@ -214,9 +215,10 @@ And if you are using scoped clients:
     "ai-memory": {
       "type": "http",
       "url": "https://<project-ref>.supabase.co/functions/v1/memory-mcp",
+      "envFile": "${workspaceFolder}/.env",
       "headers": {
-        "x-memory-key": "${MEMORY_MCP_ACCESS_KEY}",
-        "x-memory-client-id": "${MEMORY_MCP_CLIENT_ID}"
+        "x-memory-key": "${env:MEMORY_MCP_ACCESS_KEY}",
+        "x-memory-client-id": "${env:MEMORY_MCP_CLIENT_ID}"
       }
     }
   }
@@ -238,6 +240,7 @@ npm run setup:cursor
 The script prompts for either a project-local install at `.cursor/mcp.json` or a global install at `~/.cursor/mcp.json`.
 If an `ai-memory` entry already exists, it warns and asks whether to merge or overwrite before changing anything.
 If you use scoped client auth, set `MEMORY_MCP_CLIENT_ID` before running the script.
+For project-local installs, the generated config points Cursor at `${workspaceFolder}/.env` so repo-scoped secrets are available to MCP header interpolation.
 
 Example resulting config:
 

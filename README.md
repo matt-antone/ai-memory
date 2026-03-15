@@ -112,6 +112,7 @@ For Claude Code in this repo, you can also run `npm run setup:claude`.
 For Codex and Cursor in this repo, you can also run `npm run setup:codex` and `npm run setup:cursor`.
 For OpenClaw in this repo, you can also run `npm run setup:openclaw`.
 Each setup command now prompts for project-local or global install scope and warns before updating an existing `ai-memory` registration.
+Cursor project installs now write `${env:...}` header references and load `${workspaceFolder}/.env` explicitly, because Cursor does not expand bare `${VAR}` placeholders from repo `.env` files in MCP configs.
 Use `npm run uninstall` to detect project-local and global installs across Codex, Cursor, Claude, and OpenClaw, then remove exactly one selected target per run. `npm run uninstall:local` remains as a compatibility alias to the same flow. These commands do not remove the Supabase database, deployed edge function, secrets, or local `.env` files.
 
 ## Runtime auth model

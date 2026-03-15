@@ -12,9 +12,10 @@
       "type": "http",
       "url": "https://example.test/memory",
       "headers": {
-        "x-memory-key": "${MEMORY_MCP_ACCESS_KEY}",
-        "x-memory-client-id": "${MEMORY_MCP_CLIENT_ID}"
-      }
+        "x-memory-key": "${env:MEMORY_MCP_ACCESS_KEY}",
+        "x-memory-client-id": "${env:MEMORY_MCP_CLIENT_ID}"
+      },
+      "envFile": "${workspaceFolder}/.env"
     }
   },
   "featureFlags": {

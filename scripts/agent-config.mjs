@@ -12,7 +12,7 @@ import {
   upsertJsonServerConfig
 } from "../src/utils/agent-config.js";
 
-const [,, kind, action, filePath, serverName, url = "", clientId = ""] = process.argv;
+const [,, kind, action, filePath, serverName, url = "", clientId = "", optionsJson = ""] = process.argv;
 
 if (!kind || !action || !filePath || !serverName) {
   console.error("Usage: node scripts/agent-config.mjs <codex|json> <inspect|upsert|remove> <path> <server> [url] [clientId]");
@@ -47,7 +47,8 @@ if (action === "inspect") {
 }
 
 if (action === "upsert") {
-  const nextContent = helpers.upsert(content, serverName, url, clientId);
+  const options = optionsJson ? JSON.parse(optionsJson) : {};
+  const nextContent = helpers.upsert(content, serverName, url, clientId, options);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, nextContent);
   process.exit(0);
