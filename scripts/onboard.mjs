@@ -79,7 +79,14 @@ try {
   }
 
   if (await confirm("Apply remote database migrations with `supabase db push`?", true)) {
-    run("supabase", ["db", "push", "--linked"]);
+    const dbPush = run("supabase", ["db", "push", "--linked"], { allowFailure: true });
+    if (dbPush.status !== 0) {
+      console.warn("\n`supabase db push --linked` did not complete.");
+      console.warn("If you saw an IPv6 connectivity error, rerun `supabase link --project-ref <ref>` and choose the IPv4 connection option, then run `supabase db push --linked` again.");
+      if (!await confirm("Continue onboarding without a successful database push?", false)) {
+        throw new Error("Stopping onboarding after failed database push.");
+      }
+    }
   }
 
   if (await confirm("Set edge function secrets on Supabase?", true)) {
@@ -205,9 +212,11 @@ function run(command, args, options = {}) {
     rl = createPromptInterface();
   }
 
-  if (result.status !== 0) {
+  if (result.status !== 0 && !options.allowFailure) {
     throw new Error(`Command failed: ${command} ${args.join(" ")}`);
   }
+
+  return result;
 }
 
 function createPromptInterface() {
