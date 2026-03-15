@@ -25,7 +25,7 @@ try {
   console.log("AI Memory onboarding");
   console.log("This will guide you through Supabase setup, function deployment, and agent registration.\n");
 
-  const projectRef = await ask("Supabase project ref", defaultProjectRef || "exjonqzynssfopaeucvw");
+  const projectRef = await ask("Supabase project ref", defaultProjectRef || "");
   const endpoint = await ask("Memory MCP endpoint URL", projectRef
     ? `https://${projectRef}.supabase.co/functions/v1/memory-mcp`
     : defaultEndpoint);
