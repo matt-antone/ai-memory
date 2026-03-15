@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Memory"
+  short_description: "Use repo memory and recall"
+  default_prompt: "Use $ai-memory to ground this task in prior context and persist the important outcome."
