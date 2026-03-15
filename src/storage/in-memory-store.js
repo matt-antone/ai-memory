@@ -4,6 +4,35 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function flattenMetadata(value) {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const parts = [];
+  for (const [key, entry] of Object.entries(value)) {
+    parts.push(key);
+    if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") {
+      parts.push(String(entry));
+      continue;
+    }
+    if (Array.isArray(entry)) {
+      for (const item of entry) {
+        if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+          parts.push(String(item));
+        } else if (item && typeof item === "object") {
+          parts.push(...flattenMetadata(item));
+        }
+      }
+      continue;
+    }
+    if (entry && typeof entry === "object") {
+      parts.push(...flattenMetadata(entry));
+    }
+  }
+  return parts;
+}
+
 function matchesNamespace(itemNamespace = {}, requestedNamespace = {}) {
   const entries = Object.entries(requestedNamespace || {}).filter(([, value]) => {
     if (Array.isArray(value)) {
@@ -113,7 +142,7 @@ export class InMemoryStore {
 
       const storedEmbedding = this.embeddings.get(item.id)?.embedding ?? null;
       const vectorScore = queryEmbedding && storedEmbedding ? Math.max(0, dotProduct(queryEmbedding, storedEmbedding)) : 0;
-      const text = [item.content, item.summary, ...(item.tags ?? [])].filter(Boolean).join(" ");
+      const text = [item.content, item.summary, ...(item.tags ?? []), ...flattenMetadata(item.metadata)].filter(Boolean).join(" ");
       const textScore = lexicalScore(query, text);
 
       if (mode === "vector" && vectorScore === 0) {

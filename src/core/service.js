@@ -1,5 +1,6 @@
 import { createId } from "../utils/id.js";
 import { chunkText } from "./chunking.js";
+import { enrichMemoryInput } from "./memory-enrichment.js";
 import { combineScores } from "./ranking.js";
 import {
   normalizeNamespace,
@@ -18,19 +19,20 @@ export class MemoryService {
 
   async writeMemory(input, context = {}) {
     validateWriteInput(input);
-    const namespace = normalizeNamespace(input.namespace);
+    const enriched = enrichMemoryInput(input);
+    const namespace = normalizeNamespace(enriched.namespace);
     const now = this.clock().toISOString();
     const item = {
-      id: input.id ?? createId("mem"),
-      kind: input.kind,
-      content: input.content.trim(),
-      summary: input.summary ?? null,
-      source_type: input.source_type ?? null,
-      source_ref: input.source_ref ?? null,
-      metadata: input.metadata ?? {},
+      id: enriched.id ?? createId("mem"),
+      kind: enriched.kind,
+      content: enriched.content.trim(),
+      summary: enriched.summary ?? null,
+      source_type: enriched.source_type ?? null,
+      source_ref: enriched.source_ref ?? null,
+      metadata: enriched.metadata ?? {},
       namespace,
-      tags: Array.isArray(input.tags) ? input.tags : [],
-      importance: normalizeImportance(input.importance),
+      tags: Array.isArray(enriched.tags) ? enriched.tags : [],
+      importance: normalizeImportance(enriched.importance),
       created_at: now,
       last_accessed_at: null,
       recall_count: 0,
@@ -39,19 +41,19 @@ export class MemoryService {
 
     const created = await this.store.createItem(item);
 
-    if (input.embedding) {
+    if (enriched.embedding) {
       await this.store.createEmbedding({
         id: createId("emb"),
         item_id: item.id,
-        embedding: input.embedding,
-        embedding_model: input.embedding_model ?? "caller-supplied",
-        dimensions: input.embedding.length,
+        embedding: enriched.embedding,
+        embedding_model: enriched.embedding_model ?? "caller-supplied",
+        dimensions: enriched.embedding.length,
         created_at: now
       });
     }
 
-    if (Array.isArray(input.links)) {
-      for (const link of input.links) {
+    if (Array.isArray(enriched.links)) {
+      for (const link of enriched.links) {
         await this.linkMemory({
           from_id: item.id,
           to_id: link.to_id,

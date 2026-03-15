@@ -23,6 +23,8 @@ test("writes and reads memory items with embeddings", async () => {
   const loaded = await service.getMemory({ id: item.id });
   assert.equal(loaded.kind, "fact");
   assert.equal(loaded.importance, 0.9);
+  assert.ok(Array.isArray(loaded.tags));
+  assert.ok(loaded.metadata.retrieval);
 });
 
 test("archived items are hidden from default search", async () => {
@@ -187,6 +189,47 @@ test("search falls back to lexical mode when query embeddings are missing", asyn
 
   assert.equal(results.mode_used, "lexical");
   assert.equal(results.hits.length, 1);
+});
+
+test("writeMemory enriches tags and retrieval metadata for broader recall", async () => {
+  const service = createService();
+  const item = await service.writeMemory({
+    content: "Supabase deployment runbook for MCP memory service",
+    kind: "memory",
+    metadata: {
+      area: "operations",
+      owner: "platform-team",
+      environment: "staging"
+    },
+    tags: ["runbook"]
+  });
+
+  assert.ok(item.tags.includes("runbook"));
+  assert.ok(item.tags.includes("supabase"));
+  assert.ok(item.tags.includes("deployment"));
+  assert.equal(item.metadata.retrieval.kind, "memory");
+  assert.ok(item.metadata.retrieval.search_hints.includes("operations"));
+  assert.ok(item.summary.length > 0);
+});
+
+test("lexical search can match retrieval metadata terms in the in-memory store", async () => {
+  const service = createService();
+  await service.writeMemory({
+    content: "Operational guide",
+    kind: "memory",
+    metadata: {
+      component: "scheduler",
+      owner: "infra-team"
+    }
+  });
+
+  const results = await service.searchMemory({
+    query: "scheduler infra-team",
+    mode: "lexical"
+  });
+
+  assert.equal(results.hits.length, 1);
+  assert.equal(results.hits[0].item.metadata.retrieval.search_hints.includes("scheduler"), true);
 });
 
 test("invalid tool payloads are rejected", async () => {

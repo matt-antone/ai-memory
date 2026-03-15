@@ -10,3 +10,4 @@ build/
 .supabase/
 supabase/.temp/
 *.log
+.mcp.json

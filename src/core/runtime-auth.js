@@ -213,6 +213,28 @@ export function getRequestId(request) {
     ?? createId("req");
 }
 
+export function getRequestRateLimitKey(request) {
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    const [first] = forwardedFor.split(",", 1);
+    if (first?.trim()) {
+      return `ip:${first.trim()}`;
+    }
+  }
+
+  const directIp = request.headers.get("cf-connecting-ip")
+    ?? request.headers.get("x-real-ip");
+  if (directIp?.trim()) {
+    return `ip:${directIp.trim()}`;
+  }
+
+  const userAgent = request.headers.get("user-agent")?.trim() || "unknown-agent";
+  const origin = request.headers.get("origin")?.trim()
+    ?? request.headers.get("referer")?.trim()
+    ?? "unknown-origin";
+  return `fingerprint:${userAgent}:${origin}`;
+}
+
 function parseBearerToken(value) {
   if (!value) {
     return null;

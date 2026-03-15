@@ -6,6 +6,7 @@ import {
   assertNamespaceAccess,
   authenticateRequest,
   enforceNamespace,
+  getRequestRateLimitKey,
   loadRuntimePolicy
 } from "../src/core/runtime-auth.js";
 
@@ -119,4 +120,25 @@ test("in-memory rate limiter rejects callers over the configured threshold", () 
   limiter.consume("client-a", 1500);
   assert.throws(() => limiter.consume("client-a", 1800), /Rate limit exceeded/);
   assert.doesNotThrow(() => limiter.consume("client-a", 2501));
+});
+
+test("request rate limit key prefers forwarded client IP and falls back to a fingerprint", () => {
+  const proxiedRequest = new Request("https://example.test", {
+    headers: {
+      "x-forwarded-for": "203.0.113.9, 10.0.0.2",
+      "user-agent": "agent-a"
+    }
+  });
+  const fallbackRequest = new Request("https://example.test", {
+    headers: {
+      "user-agent": "agent-b",
+      origin: "https://app.example.test"
+    }
+  });
+
+  assert.equal(getRequestRateLimitKey(proxiedRequest), "ip:203.0.113.9");
+  assert.equal(
+    getRequestRateLimitKey(fallbackRequest),
+    "fingerprint:agent-b:https://app.example.test"
+  );
 });

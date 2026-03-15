@@ -33,12 +33,17 @@ If you are starting fresh, initialize Supabase in the repo first.
 
 ## 4. Apply the database schema
 
-Apply the migration in:
+Apply the migrations in:
 
 - `supabase/migrations/0001_memory.sql`
 - `supabase/migrations/0002_search_or_lexical.sql`
+- `supabase/migrations/0003_metadata_search_enrichment.sql`
+- `supabase/migrations/0004_service_role_policies.sql`
+- `supabase/migrations/0005_force_rls_memory_tables.sql`
 
 Depending on your workflow, use either local reset/dev commands or push the migration to the linked project.
+
+For a clean first install on a brand-new project, you can alternatively apply `supabase/baseline/initial_install.sql`. That baseline is schema-only and already enables RLS plus service-role-only policies on the memory tables.
 
 ## 5. Configure secrets for the edge function
 
@@ -48,9 +53,9 @@ Set these values for the deployed function:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - One of:
   - `MEMORY_MCP_ACCESS_KEY`
-  - `MEMORY_MCP_ACCESS_KEYS`
   - `MEMORY_MCP_CLIENTS_JSON`
 - Optional:
+  - `MEMORY_MCP_ACCESS_KEYS`
   - `MEMORY_RATE_LIMIT_WINDOW_MS`
   - `MEMORY_RATE_LIMIT_MAX_REQUESTS`
 
@@ -101,7 +106,7 @@ Test these flows first:
 If you have the endpoint and credentials locally, you can run:
 
 ```bash
-MEMORY_MCP_SMOKE_URL="https://<project-ref>.supabase.co/functions/v1/memory-mcp" \
+MEMORY_MCP_URL="https://<project-ref>.supabase.co/functions/v1/memory-mcp" \
 MEMORY_MCP_ACCESS_KEY="..." \
 MEMORY_MCP_CLIENT_ID="optional-client-id" \
 npm run smoke:mcp

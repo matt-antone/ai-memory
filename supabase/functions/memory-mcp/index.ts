@@ -4,8 +4,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 import { asToolErrorResult, asToolResult } from "../../../src/core/mcp-format.js";
-import { loadRuntimePolicy, sanitizeRuntimePolicy, authenticateRequest, enforceNamespace, assertNamespaceAccess, InMemoryRateLimiter, getRequestId } from "../../../src/core/runtime-auth.js";
-import { errorPayload, normalizeError, upstreamError } from "../../../src/core/runtime-errors.js";
+import { loadRuntimePolicy, sanitizeRuntimePolicy, authenticateRequest, enforceNamespace, assertNamespaceAccess, InMemoryRateLimiter, getRequestId, getRequestRateLimitKey } from "../../../src/core/runtime-auth.js";
+import { errorPayload, normalizeError, upstreamError, validationError } from "../../../src/core/runtime-errors.js";
 import { MemoryService } from "../../../src/core/service.js";
 import { SupabaseRestStore } from "../../../src/storage/supabase-rest-store.js";
 import {
@@ -20,10 +20,15 @@ import {
 
 const runtimePolicy = loadRuntimePolicy(Deno.env);
 const rateLimiter = new InMemoryRateLimiter(runtimePolicy.rateLimit);
+const preAuthRateLimiter = new InMemoryRateLimiter({
+  windowMs: runtimePolicy.rateLimit.windowMs,
+  maxRequests: Math.max(runtimePolicy.rateLimit.maxRequests * 3, 300)
+});
 const store = new SupabaseRestStore({
   url: Deno.env.get("SUPABASE_URL") ?? "",
   serviceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 });
+const MAX_REQUEST_BODY_BYTES = parsePositiveInt(Deno.env.get("MEMORY_MAX_REQUEST_BODY_BYTES"), 256 * 1024);
 
 console.log(JSON.stringify({
   level: "info",
@@ -169,6 +174,7 @@ Deno.serve(async (request: Request) => {
   }
 
   try {
+    preAuthRateLimiter.consume(getRequestRateLimitKey(request));
     const caller = authenticateRequest(request, runtimePolicy);
     rateLimiter.consume(caller.clientId);
     const requestContext = {
@@ -178,8 +184,13 @@ Deno.serve(async (request: Request) => {
 
     let parsedBody: unknown = undefined;
     try {
-      parsedBody = await request.clone().json();
-    } catch {
+      parsedBody = await parseJsonBody(request, requestId);
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        parsedBody = undefined;
+      } else {
+        throw error;
+      }
       // Leave parsedBody undefined for non-JSON requests.
     }
 
@@ -216,4 +227,38 @@ function logRequest(level: string, payload: Record<string, unknown>) {
     level,
     ...payload
   }));
+}
+
+async function parseJsonBody(request: Request, requestId: string) {
+  const contentLength = parsePositiveInt(request.headers.get("content-length"), null);
+  if (contentLength !== null && contentLength > MAX_REQUEST_BODY_BYTES) {
+    throw validationError("Request body is too large", {
+      request_id: requestId,
+      max_request_body_bytes: MAX_REQUEST_BODY_BYTES
+    });
+  }
+
+  const cloned = request.clone();
+  const text = await cloned.text();
+  if (!text) {
+    return undefined;
+  }
+
+  if (byteLength(text) > MAX_REQUEST_BODY_BYTES) {
+    throw validationError("Request body is too large", {
+      request_id: requestId,
+      max_request_body_bytes: MAX_REQUEST_BODY_BYTES
+    });
+  }
+
+  return JSON.parse(text);
+}
+
+function byteLength(value: string) {
+  return new TextEncoder().encode(value).length;
+}
+
+function parsePositiveInt(value: string | null, fallback: number | null) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

@@ -1,9 +1,9 @@
-const endpoint = process.env.MEMORY_MCP_SMOKE_URL;
+const endpoint = process.env.MEMORY_MCP_SMOKE_URL || process.env.MEMORY_MCP_URL;
 const accessKey = process.env.MEMORY_MCP_ACCESS_KEY;
 const clientId = process.env.MEMORY_MCP_CLIENT_ID ?? "";
 
 if (!endpoint || !accessKey) {
-  console.error("MEMORY_MCP_SMOKE_URL and MEMORY_MCP_ACCESS_KEY must be set");
+  console.error("Set MEMORY_MCP_URL (or MEMORY_MCP_SMOKE_URL) and MEMORY_MCP_ACCESS_KEY");
   process.exit(1);
 }
 
