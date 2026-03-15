@@ -79,7 +79,10 @@ try {
   }
 
   if (await confirm("Apply remote database migrations with `supabase db push`?", true)) {
-    const dbPush = run("supabase", ["db", "push", "--linked"], { allowFailure: true });
+    const dbPush = run("supabase", ["db", "push", "--linked"], {
+      allowFailure: true,
+      interactive: true
+    });
     if (dbPush.status !== 0) {
       console.warn("\n`supabase db push --linked` did not complete.");
       console.warn("If you saw an IPv6 connectivity error, rerun `supabase link --project-ref <ref>` and choose the IPv4 connection option, then run `supabase db push --linked` again.");
