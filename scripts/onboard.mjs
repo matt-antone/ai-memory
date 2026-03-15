@@ -158,6 +158,12 @@ try {
 
   console.log("\nOnboarding complete.");
   console.log(`Endpoint: ${endpoint}`);
+  if (agents.includes("claude")) {
+    const red = "\u001b[31m";
+    const reset = "\u001b[0m";
+    console.log(`${red}Claude launch command:${reset}`);
+    console.log(`${red}  cd "${cwd}" && set -a && source .env && set +a && claude${reset}`);
+  }
   console.log("If Codex or Claude was already open, restart it so it reloads MCP config.");
 } finally {
   rl?.close();
