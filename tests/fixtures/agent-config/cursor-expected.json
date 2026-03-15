@@ -1,0 +1,23 @@
+{
+  "theme": "dark",
+  "mcpServers": {
+    "existing-server": {
+      "type": "http",
+      "url": "https://existing.test/mcp",
+      "headers": {
+        "authorization": "Bearer keep"
+      }
+    },
+    "ai-memory": {
+      "type": "http",
+      "url": "https://example.test/memory",
+      "headers": {
+        "x-memory-key": "${MEMORY_MCP_ACCESS_KEY}",
+        "x-memory-client-id": "${MEMORY_MCP_CLIENT_ID}"
+      }
+    }
+  },
+  "featureFlags": {
+    "showExperimentalMcp": true
+  }
+}

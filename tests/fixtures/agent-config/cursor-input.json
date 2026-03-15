@@ -1,0 +1,19 @@
+{
+  "theme": "dark",
+  "mcpServers": {
+    "existing-server": {
+      "type": "http",
+      "url": "https://existing.test/mcp",
+      "headers": {
+        "authorization": "Bearer keep"
+      }
+    },
+    "ai-memory": {
+      "type": "stdio",
+      "command": "legacy-memory"
+    }
+  },
+  "featureFlags": {
+    "showExperimentalMcp": true
+  }
+}

@@ -1,0 +1,18 @@
+[experiments]
+enabled = true
+
+[mcp_servers.existing]
+url = "https://existing.test/mcp"
+
+[mcp_servers.existing.http_headers]
+authorization = "Bearer token"
+
+[mcp_servers.ai-memory]
+url = "https://legacy.test/memory"
+bearer_token_env_var = "OLD_TOKEN"
+
+[mcp_servers.ai-memory.http_headers]
+x-memory-key = "legacy"
+
+[features]
+name = "keep-me"

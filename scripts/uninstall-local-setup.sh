@@ -2,183 +2,97 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/mcp-config-common.sh"
+
 SERVER_NAME="${AI_MEMORY_SERVER_NAME:-ai-memory}"
 CODEX_SERVER_NAME="${CODEX_MCP_SERVER_NAME:-$SERVER_NAME}"
 CURSOR_SERVER_NAME="${CURSOR_MCP_SERVER_NAME:-$SERVER_NAME}"
 CLAUDE_SERVER_NAME="${CLAUDE_MCP_SERVER_NAME:-$SERVER_NAME}"
-CLAUDE_SCOPE="${CLAUDE_MCP_SCOPE:-project}"
+OPENCLAW_SERVER_NAME="${OPENCLAW_MCP_SERVER_NAME:-$SERVER_NAME}"
 
-CODEX_CONFIG_PATH="${HOME}/.codex/config.toml"
-CURSOR_CONFIG_PATH=".cursor/mcp.json"
-CLAUDE_BACKUP_CANDIDATES=(
-  "${PWD}/.mcp.json"
-  "${HOME}/.claude.json"
-  "${HOME}/.claude/settings.json"
-)
+declare -a TARGET_LABELS=()
+declare -a TARGET_AGENTS=()
+declare -a TARGET_SCOPES=()
+declare -a TARGET_KINDS=()
+declare -a TARGET_PATHS=()
+declare -a TARGET_SERVER_NAMES=()
 
-timestamp="$(date +"%Y%m%d-%H%M%S")"
-
-confirm() {
-  local prompt="$1"
-  local answer
-  read -r -p "$prompt [y/N] " answer
-  answer="$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')"
-  case "$answer" in
-    y|yes) return 0 ;;
-    *) return 1 ;;
-  esac
+register_target() {
+  TARGET_LABELS+=("$1")
+  TARGET_AGENTS+=("$2")
+  TARGET_SCOPES+=("$3")
+  TARGET_KINDS+=("$4")
+  TARGET_PATHS+=("$5")
+  TARGET_SERVER_NAMES+=("$6")
 }
 
-backup_file() {
-  local path="$1"
-  if [[ ! -f "$path" ]]; then
-    return 1
-  fi
+inspect_file_target() {
+  local label="$1"
+  local agent="$2"
+  local scope="$3"
+  local kind="$4"
+  local path="$5"
+  local server_name="$6"
 
-  local backup_path="${path}.ai-memory-backup-${timestamp}"
-  cp "$path" "$backup_path"
-  echo "Backed up: $path"
-  echo "         -> $backup_path"
-  return 0
+  [[ -f "$path" ]] || return 0
+  local inspect_json
+  inspect_json="$(node "$SCRIPT_DIR/agent-config.mjs" "$kind" inspect "$path" "$server_name")"
+  local exists
+  exists="$(node -e 'const v = JSON.parse(process.argv[1]); console.log(v.exists ? "1" : "0");' "$inspect_json")"
+  if [[ "$exists" == "1" ]]; then
+    register_target "$label" "$agent" "$scope" "$kind" "$path" "$server_name"
+  fi
 }
 
-remove_codex_server() {
-  if [[ ! -f "$CODEX_CONFIG_PATH" ]]; then
-    echo "Codex config not found, skipping: $CODEX_CONFIG_PATH"
-    return
-  fi
+inspect_file_target "Codex project/local ($PWD/.codex/config.toml)" "codex" "project/local" "codex" "$PWD/.codex/config.toml" "$CODEX_SERVER_NAME"
+inspect_file_target "Codex global/user ($HOME/.codex/config.toml)" "codex" "global/user" "codex" "$HOME/.codex/config.toml" "$CODEX_SERVER_NAME"
+inspect_file_target "Cursor project/local ($PWD/.cursor/mcp.json)" "cursor" "project/local" "json" "$PWD/.cursor/mcp.json" "$CURSOR_SERVER_NAME"
+inspect_file_target "Cursor global/user ($HOME/.cursor/mcp.json)" "cursor" "global/user" "json" "$HOME/.cursor/mcp.json" "$CURSOR_SERVER_NAME"
+inspect_file_target "OpenClaw project/local ($PWD/.openclaw/openclaw.json)" "openclaw" "project/local" "json" "$PWD/.openclaw/openclaw.json" "$OPENCLAW_SERVER_NAME"
+inspect_file_target "OpenClaw global/user ($HOME/.openclaw/openclaw.json)" "openclaw" "global/user" "json" "$HOME/.openclaw/openclaw.json" "$OPENCLAW_SERVER_NAME"
 
-  if ! grep -q "^\[mcp_servers\.${CODEX_SERVER_NAME//./\\.}\]" "$CODEX_CONFIG_PATH"; then
-    echo "No Codex MCP server named '$CODEX_SERVER_NAME' found in $CODEX_CONFIG_PATH"
-    return
-  fi
-
-  backup_file "$CODEX_CONFIG_PATH" >/dev/null
-
-  local tmp_file
-  tmp_file="$(mktemp)"
-
-  node --input-type=module - "$CODEX_CONFIG_PATH" "$tmp_file" "$CODEX_SERVER_NAME" <<'EOF'
-import fs from "node:fs";
-
-const [, , inputPath, outputPath, serverName] = process.argv;
-const lines = fs.readFileSync(inputPath, "utf8").split(/\r?\n/);
-const rootHeader = `[mcp_servers.${serverName}]`;
-const nestedPrefix = `[mcp_servers.${serverName}.`;
-let skip = false;
-
-const kept = lines.filter((line) => {
-  const trimmed = line.trim();
-  if (trimmed === rootHeader || trimmed.startsWith(nestedPrefix)) {
-    skip = true;
-    return false;
-  }
-  if (skip && trimmed.startsWith("[") && !trimmed.startsWith(nestedPrefix)) {
-    skip = false;
-  }
-  return !skip;
-});
-
-fs.writeFileSync(outputPath, `${kept.join("\n").replace(/\n{3,}/g, "\n\n")}\n`);
-EOF
-
-  mv "$tmp_file" "$CODEX_CONFIG_PATH"
-  echo "Removed Codex MCP server '$CODEX_SERVER_NAME' from $CODEX_CONFIG_PATH"
-}
-
-remove_cursor_server() {
-  if [[ ! -f "$CURSOR_CONFIG_PATH" ]]; then
-    echo "Cursor config not found, skipping: $CURSOR_CONFIG_PATH"
-    return
-  fi
-
-  if ! node --input-type=module - "$CURSOR_CONFIG_PATH" "$CURSOR_SERVER_NAME" <<'EOF'
-import fs from "node:fs";
-const [, , configPath, serverName] = process.argv;
-const raw = fs.readFileSync(configPath, "utf8").trim();
-if (!raw) process.exit(1);
-const data = JSON.parse(raw);
-if (!data?.mcpServers || typeof data.mcpServers !== "object" || Array.isArray(data.mcpServers)) process.exit(1);
-if (!(serverName in data.mcpServers)) process.exit(1);
-EOF
-  then
-    echo "No Cursor MCP server named '$CURSOR_SERVER_NAME' found in $CURSOR_CONFIG_PATH"
-    return
-  fi
-
-  backup_file "$CURSOR_CONFIG_PATH" >/dev/null
-
-  node --input-type=module - "$CURSOR_CONFIG_PATH" "$CURSOR_SERVER_NAME" <<'EOF'
-import fs from "node:fs";
-
-const [, , configPath, serverName] = process.argv;
-const raw = fs.readFileSync(configPath, "utf8").trim();
-const data = raw ? JSON.parse(raw) : { mcpServers: {} };
-delete data.mcpServers[serverName];
-fs.writeFileSync(configPath, `${JSON.stringify(data, null, 2)}\n`);
-EOF
-
-  echo "Removed Cursor MCP server '$CURSOR_SERVER_NAME' from $CURSOR_CONFIG_PATH"
-}
-
-backup_claude_files() {
-  local backed_up=0
-  local candidate
-  for candidate in "${CLAUDE_BACKUP_CANDIDATES[@]}"; do
-    if backup_file "$candidate"; then
-      backed_up=1
+if command -v claude >/dev/null 2>&1; then
+  for scope in project user local; do
+    if claude mcp get --scope "$scope" "$CLAUDE_SERVER_NAME" >/dev/null 2>&1 \
+      || claude mcp get "$CLAUDE_SERVER_NAME" --scope "$scope" >/dev/null 2>&1; then
+      register_target "Claude $scope scope" "claude" "$scope" "claude" "$scope" "$CLAUDE_SERVER_NAME"
     fi
   done
-  return "$backed_up"
-}
-
-remove_claude_server() {
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "Claude CLI not found, skipping Claude MCP removal."
-    return
-  fi
-
-  if ! claude mcp get "$CLAUDE_SERVER_NAME" >/dev/null 2>&1; then
-    echo "No Claude MCP server named '$CLAUDE_SERVER_NAME' found."
-    return
-  fi
-
-  backup_claude_files || true
-
-  if claude mcp remove --scope "$CLAUDE_SCOPE" "$CLAUDE_SERVER_NAME"; then
-    echo "Removed Claude MCP server '$CLAUDE_SERVER_NAME' from scope '$CLAUDE_SCOPE'."
-  else
-    echo "Claude MCP removal failed for '$CLAUDE_SERVER_NAME' in scope '$CLAUDE_SCOPE'." >&2
-    return 1
-  fi
-}
-
-echo "This helper can remove local ai-memory agent config."
-echo "It will not touch the Supabase database, deployed edge functions, secrets, or .env files."
-echo "Before removing any agent config, it creates a timestamped backup of the relevant config file when available."
-echo
-
-if confirm "Remove ai-memory config from Codex?"; then
-  remove_codex_server
-else
-  echo "Skipped Codex config."
 fi
 
-echo
-
-if confirm "Remove ai-memory config from Cursor in this workspace?"; then
-  remove_cursor_server
-else
-  echo "Skipped Cursor config."
+if [[ "${#TARGET_LABELS[@]}" -eq 0 ]]; then
+  echo "No ai-memory installs were detected for Codex, Cursor, Claude, or OpenClaw."
+  exit 0
 fi
 
+echo "Detected ai-memory installs:"
+for i in "${!TARGET_LABELS[@]}"; do
+  echo "  $((i + 1))) ${TARGET_LABELS[$i]}"
+done
 echo
-
-if confirm "Remove ai-memory config from Claude?"; then
-  remove_claude_server
-else
-  echo "Skipped Claude config."
+read -r -p "Choose one install to remove [1]: " selection
+selection="${selection:-1}"
+if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#TARGET_LABELS[@]} )); then
+  echo "Invalid selection." >&2
+  exit 1
 fi
 
-echo
-echo "Local uninstall complete."
+index=$((selection - 1))
+agent="${TARGET_AGENTS[$index]}"
+scope="${TARGET_SCOPES[$index]}"
+kind="${TARGET_KINDS[$index]}"
+path="${TARGET_PATHS[$index]}"
+server_name="${TARGET_SERVER_NAMES[$index]}"
+
+echo "Removing ${TARGET_LABELS[$index]}"
+
+if [[ "$kind" == "claude" ]]; then
+  claude mcp remove --scope "$scope" "$server_name"
+  echo "Removed Claude MCP server '$server_name' from scope '$scope'."
+  exit 0
+fi
+
+backup_file "$path" >/dev/null || true
+node "$SCRIPT_DIR/agent-config.mjs" "$kind" remove "$path" "$server_name"
+echo "Removed '$server_name' from $path"

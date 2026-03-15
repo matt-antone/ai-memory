@@ -1,0 +1,21 @@
+[experiments]
+enabled = true
+
+[mcp_servers.existing]
+url = "https://existing.test/mcp"
+
+[mcp_servers.existing.http_headers]
+authorization = "Bearer token"
+
+[features]
+name = "keep-me"
+
+# >>> ai-memory managed block >>>
+[mcp_servers.ai-memory]
+url = "https://example.test/memory"
+bearer_token_env_var = "MEMORY_MCP_ACCESS_KEY"
+
+[mcp_servers.ai-memory.http_headers]
+x-memory-key = "MCP_BEARER_TOKEN"
+x-memory-client-id = "client-a"
+# <<< ai-memory managed block <<<

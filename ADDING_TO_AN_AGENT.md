@@ -64,13 +64,13 @@ npm run onboard
 
 The onboarding CLI walks through project linking, migration push, secret setup, edge-function deploy, agent registration, and an optional smoke test.
 
-If you later run the local uninstall helper, it will ask whether you want to remove the `ai-memory` registration from Codex, Claude, and Cursor:
+If you later run the uninstall helper, it will detect installed `ai-memory` registrations for Codex, Claude, Cursor, and OpenClaw across project-local and global scopes, then ask which single target you want to remove:
 
 ```bash
-npm run uninstall:local
+npm run uninstall
 ```
 
-For each agent you choose to clean up, it creates a timestamped backup first and then removes only the `ai-memory` entry. It still does not remove any Supabase database objects, edge deployments, secrets, or local `.env` files.
+`npm run uninstall:local` remains available as a compatibility alias to the same uninstall flow. For each selected target, the helper creates a timestamped backup first when it edits a file-backed config, then removes only the `ai-memory` entry for that chosen install. It still does not remove any Supabase database objects, edge deployments, secrets, or local `.env` files.
 
 ## Recommended setup for agents
 
@@ -113,9 +113,8 @@ This repo also includes a helper script:
 npm run setup:codex
 ```
 
-By default it writes a managed `ai-memory` block into `~/.codex/config.toml`.
-It is safe to rerun if the existing `ai-memory` block was created by this script.
-If you already have a hand-written `[mcp_servers.ai-memory]` block, the script will stop instead of overwriting it.
+The script prompts for either a project-local install at `.codex/config.toml` or a global install at `~/.codex/config.toml`.
+If an `ai-memory` entry already exists, it warns and asks whether to merge or overwrite before changing anything.
 
 ```toml
 [mcp_servers.ai-memory]
@@ -149,8 +148,8 @@ This repo also includes a helper script:
 npm run setup:claude
 ```
 
-By default it registers `ai-memory` against the deployed endpoint for this repo using `--scope project`.
-It is safe to rerun; the script removes any existing server with the same name in that scope before re-adding it.
+The script now prompts for `project`, `user`, or `local` Claude scope before registering the server.
+If an `ai-memory` entry already exists in that scope, it warns before replacing it.
 
 You can override the endpoint or scope when needed:
 
@@ -231,7 +230,8 @@ This repo includes a helper script:
 npm run setup:cursor
 ```
 
-By default it writes or updates the `ai-memory` entry in `.cursor/mcp.json` for this project.
+The script prompts for either a project-local install at `.cursor/mcp.json` or a global install at `~/.cursor/mcp.json`.
+If an `ai-memory` entry already exists, it warns and asks whether to merge or overwrite before changing anything.
 If you use scoped client auth, set `MEMORY_MCP_CLIENT_ID` before running the script.
 
 Example resulting config:
@@ -273,25 +273,21 @@ After writing the file:
 - check Settings -> MCP to confirm the server is enabled
 - Cursor CLI will also pick up the same MCP project config when run from this workspace
 
-Register the deployed endpoint as an HTTP MCP server and make sure the host sends the required headers.
+## Quickstart: OpenClaw
 
-Minimum expectations:
+This repo now includes an OpenClaw setup helper that writes an `ai-memory` MCP entry into either a project-local or global OpenClaw config.
 
-- URL points at the deployed edge function
-- requests include the configured auth header
-- the host can complete `initialize` and `tools/list`
-
-If the host supports static headers, send:
-
-```text
-x-memory-key: <secret>
+```bash
+npm run setup:openclaw
 ```
 
-And for scoped clients:
+The script prompts for either:
 
-```text
-x-memory-client-id: <client id>
-```
+- project-local config at `.openclaw/openclaw.json`
+- global config at `~/.openclaw/openclaw.json`
+
+If you choose project-local, OpenClaw must be launched with `OPENCLAW_CONFIG_PATH` pointing at that file so it becomes the active config for the repo.
+If an `ai-memory` entry already exists, the script warns and asks whether to merge or overwrite before changing anything.
 
 ## How to scope memory safely
 

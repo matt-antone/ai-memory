@@ -107,7 +107,7 @@ try {
   }
 
   const agentsRaw = await ask(
-    "Which agents should be configured? (comma-separated: claude, codex, cursor, none)",
+    "Which agents should be configured? (comma-separated: claude, codex, cursor, openclaw, none)",
     "claude,codex,cursor"
   );
   const agents = agentsRaw.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
@@ -128,6 +128,8 @@ try {
       run("npm", ["run", "setup:codex"], { env: setupEnv });
     } else if (agent === "cursor") {
       run("npm", ["run", "setup:cursor"], { env: setupEnv });
+    } else if (agent === "openclaw") {
+      run("npm", ["run", "setup:openclaw"], { env: setupEnv });
     } else if (agent) {
       console.warn(`Skipping unknown agent: ${agent}`);
     }
@@ -159,7 +161,7 @@ Interactive onboarding for this repo. It can:
 - push database migrations
 - set edge function secrets
 - deploy the memory-mcp edge function
-- configure Claude, Codex, and Cursor
+- configure Claude, Codex, Cursor, and OpenClaw
 - run the MCP smoke test
 `);
 }

@@ -1,0 +1,21 @@
+{
+  "gateway": {
+    "port": 3456
+  },
+  "mcpServers": {
+    "analytics": {
+      "type": "http",
+      "url": "https://analytics.test/mcp"
+    },
+    "ai-memory": {
+      "type": "http",
+      "url": "https://old.test/memory",
+      "headers": {
+        "x-memory-key": "old"
+      }
+    }
+  },
+  "telemetry": {
+    "enabled": false
+  }
+}
