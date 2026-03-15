@@ -68,7 +68,7 @@ test("json upsert preserves unrelated servers", () => {
   const parsed = JSON.parse(next);
 
   assert.equal(parsed.mcpServers.existing.url, "https://existing.test");
-  assert.equal(parsed.mcpServers["ai-memory"].headers["x-memory-client-id"], "${MEMORY_MCP_CLIENT_ID}");
+  assert.equal(parsed.mcpServers["ai-memory"].headers["x-memory-client-id"], "client-a");
 });
 
 test("json upsert supports Cursor env interpolation and env files", () => {
@@ -82,7 +82,7 @@ test("json upsert supports Cursor env interpolation and env files", () => {
   const parsed = JSON.parse(next);
 
   assert.equal(parsed.mcpServers["ai-memory"].headers["x-memory-key"], "${env:MEMORY_MCP_ACCESS_KEY}");
-  assert.equal(parsed.mcpServers["ai-memory"].headers["x-memory-client-id"], "${env:MEMORY_MCP_CLIENT_ID}");
+  assert.equal(parsed.mcpServers["ai-memory"].headers["x-memory-client-id"], "client-a");
   assert.equal(parsed.mcpServers["ai-memory"].envFile, "${workspaceFolder}/.env");
 });
 

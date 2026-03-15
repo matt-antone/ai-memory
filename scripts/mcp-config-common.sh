@@ -105,7 +105,6 @@ detect_shell_rc_file() {
 }
 
 print_global_env_instructions() {
-  local include_client_id="${1:-0}"
   local rc_file
   local green=$'\033[0;32m'
   local bold_green=$'\033[1;32m'
@@ -121,9 +120,6 @@ print_global_env_instructions() {
   if [[ "$rc_file" == *.fish ]]; then
     printf '%s%s%s\n' "$green" "Example:" "$reset"
     printf '%s%s%s\n' "$green" "  set -Ux MEMORY_MCP_ACCESS_KEY \"your-access-key\"" "$reset"
-    if [[ "$include_client_id" == "1" ]]; then
-      printf '%s%s%s\n' "$green" "  set -Ux MEMORY_MCP_CLIENT_ID \"your-client-id\"" "$reset"
-    fi
     printf '\n'
     printf '%s%s%s\n' "$green" "Then open a new terminal session before relaunching your MCP host." "$reset"
     return 0
@@ -131,9 +127,6 @@ print_global_env_instructions() {
 
   printf '%s%s%s\n' "$green" "Example:" "$reset"
   printf '%s%s%s\n' "$green" "  export MEMORY_MCP_ACCESS_KEY=\"your-access-key\"" "$reset"
-  if [[ "$include_client_id" == "1" ]]; then
-    printf '%s%s%s\n' "$green" "  export MEMORY_MCP_CLIENT_ID=\"your-client-id\"" "$reset"
-  fi
   printf '\n'
   printf '%s%s%s\n' "$green" "Then reload your shell with:" "$reset"
   printf '%s%s%s\n' "$green" "  source \"$rc_file\"" "$reset"

@@ -61,7 +61,6 @@ else
   echo "This updates the default OpenClaw config path for this machine."
 fi
 if [[ -n "$CLIENT_ID" ]]; then
-  print_global_env_instructions 1
-else
-  print_global_env_instructions 0
+  echo "Scoped client ID is stored in the OpenClaw MCP config for this install."
 fi
+print_global_env_instructions

@@ -42,7 +42,7 @@ cmd=(
 )
 
 if [[ -n "${MEMORY_MCP_CLIENT_ID:-}" ]]; then
-  client_header='x-memory-client-id: ${MEMORY_MCP_CLIENT_ID}'
+  client_header="x-memory-client-id: ${MEMORY_MCP_CLIENT_ID}"
   cmd+=(--header "$client_header")
 fi
 cmd+=(--header "$key_header")
@@ -73,7 +73,6 @@ echo
 echo "Launch Claude with the required ai-memory environment exported:"
 echo "  cd \"$PWD\" && set -a && source .env && set +a && claude"
 if [[ -n "${MEMORY_MCP_CLIENT_ID:-}" ]]; then
-  print_global_env_instructions 1
-else
-  print_global_env_instructions 0
+  echo "Scoped client ID is stored in the Claude MCP registration for this install."
 fi
+print_global_env_instructions

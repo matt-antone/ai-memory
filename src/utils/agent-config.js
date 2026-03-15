@@ -6,7 +6,7 @@ function createHeaders(clientId, options = {}) {
   };
 
   if (clientId) {
-    headers["x-memory-client-id"] = envRef("MEMORY_MCP_CLIENT_ID");
+    headers["x-memory-client-id"] = clientId;
   }
 
   return headers;
@@ -58,12 +58,12 @@ function jsonServerLooksManaged(entry) {
   const usesLegacyEnvRefs = headers["x-memory-key"] === "${MEMORY_MCP_ACCESS_KEY}"
     && (
       headers["x-memory-client-id"] === undefined
-      || headers["x-memory-client-id"] === "${MEMORY_MCP_CLIENT_ID}"
+      || typeof headers["x-memory-client-id"] === "string"
     );
   const usesCursorEnvRefs = headers["x-memory-key"] === "${env:MEMORY_MCP_ACCESS_KEY}"
     && (
       headers["x-memory-client-id"] === undefined
-      || headers["x-memory-client-id"] === "${env:MEMORY_MCP_CLIENT_ID}"
+      || typeof headers["x-memory-client-id"] === "string"
     );
 
   return entry.type === "http"

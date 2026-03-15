@@ -66,7 +66,6 @@ else
   echo "Open Cursor and confirm the global MCP server is enabled."
 fi
 if [[ -n "$CLIENT_ID" ]]; then
-  print_global_env_instructions 1
-else
-  print_global_env_instructions 0
+  echo "Scoped client ID is stored in the Cursor MCP config for this install."
 fi
+print_global_env_instructions

@@ -136,7 +136,7 @@ Important:
 - if the host is already running, fully restart it after config changes
 - the edge function fails closed if credentials are missing or blank
 
-If you use a scoped client, set `MEMORY_MCP_CLIENT_ID` before running the script and it will add the `x-memory-client-id` header.
+If you use a scoped client, set `MEMORY_MCP_CLIENT_ID` before running the script and it will write that `x-memory-client-id` into the generated config for that install. Do not set a machine-global `MEMORY_MCP_CLIENT_ID` when multiple agents or repos share the same computer.
 
 ## Quickstart: Claude Code
 
@@ -174,7 +174,7 @@ If you are using a scoped client, run:
 ```bash
 claude mcp add --transport http --scope project \
   --header 'x-memory-key: ${MEMORY_MCP_ACCESS_KEY}' \
-  --header 'x-memory-client-id: ${MEMORY_MCP_CLIENT_ID}' \
+  --header 'x-memory-client-id: your-client-id' \
   ai-memory https://<project-ref>.supabase.co/functions/v1/memory-mcp
 ```
 
@@ -218,7 +218,7 @@ And if you are using scoped clients:
       "envFile": "${workspaceFolder}/.env",
       "headers": {
         "x-memory-key": "${env:MEMORY_MCP_ACCESS_KEY}",
-        "x-memory-client-id": "${env:MEMORY_MCP_CLIENT_ID}"
+        "x-memory-client-id": "your-client-id"
       }
     }
   }
@@ -239,7 +239,7 @@ npm run setup:cursor
 
 The script prompts for either a project-local install at `.cursor/mcp.json` or a global install at `~/.cursor/mcp.json`.
 If an `ai-memory` entry already exists, it warns and asks whether to merge or overwrite before changing anything.
-If you use scoped client auth, set `MEMORY_MCP_CLIENT_ID` before running the script.
+If you use scoped client auth, set `MEMORY_MCP_CLIENT_ID` before running the script. The setup helper writes it into the generated MCP config for that install rather than expecting a machine-global env var.
 For project-local installs, the generated config points Cursor at `${workspaceFolder}/.env` so repo-scoped secrets are available to MCP header interpolation.
 
 Example resulting config:
@@ -268,7 +268,7 @@ And with a scoped client:
       "url": "https://<project-ref>.supabase.co/functions/v1/memory-mcp",
       "headers": {
         "x-memory-key": "${MEMORY_MCP_ACCESS_KEY}",
-        "x-memory-client-id": "${MEMORY_MCP_CLIENT_ID}"
+        "x-memory-client-id": "your-client-id"
       }
     }
   }

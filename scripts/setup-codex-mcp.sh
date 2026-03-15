@@ -60,4 +60,4 @@ else
   echo "This is the global Codex MCP config for this machine."
 fi
 echo "Restart Codex after config changes so it reloads MCP servers."
-print_global_env_instructions 0
+print_global_env_instructions

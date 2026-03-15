@@ -13,7 +13,7 @@
       "url": "https://example.test/memory",
       "headers": {
         "x-memory-key": "${env:MEMORY_MCP_ACCESS_KEY}",
-        "x-memory-client-id": "${env:MEMORY_MCP_CLIENT_ID}"
+        "x-memory-client-id": "client-a"
       },
       "envFile": "${workspaceFolder}/.env"
     }
