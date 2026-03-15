@@ -72,3 +72,8 @@ claude mcp get --scope "$scope" "$SERVER_NAME" || claude mcp list
 echo
 echo "Launch Claude with the required ai-memory environment exported:"
 echo "  cd \"$PWD\" && set -a && source .env && set +a && claude"
+if [[ -n "${MEMORY_MCP_CLIENT_ID:-}" ]]; then
+  print_global_env_instructions 1
+else
+  print_global_env_instructions 0
+fi

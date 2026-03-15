@@ -60,3 +60,8 @@ if [[ "$scope" == "project/local" ]]; then
 else
   echo "This updates the default OpenClaw config path for this machine."
 fi
+if [[ -n "$CLIENT_ID" ]]; then
+  print_global_env_instructions 1
+else
+  print_global_env_instructions 0
+fi

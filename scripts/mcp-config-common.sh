@@ -91,3 +91,51 @@ choose_conflict_mode() {
 
   prompt_choice "How should the existing registration be handled?" 1 "merge" "overwrite"
 }
+
+detect_shell_rc_file() {
+  local shell_name
+  shell_name="$(basename "${SHELL:-}")"
+
+  case "$shell_name" in
+    zsh) printf '%s\n' "$HOME/.zshrc" ;;
+    bash) printf '%s\n' "$HOME/.bashrc" ;;
+    fish) printf '%s\n' "$HOME/.config/fish/config.fish" ;;
+    *) printf '%s\n' "$HOME/.profile" ;;
+  esac
+}
+
+print_global_env_instructions() {
+  local include_client_id="${1:-0}"
+  local rc_file
+  local green=$'\033[0;32m'
+  local bold_green=$'\033[1;32m'
+  local reset=$'\033[0m'
+  rc_file="$(detect_shell_rc_file)"
+
+  printf '\n'
+  printf '%s%s%s\n' "$bold_green" "============================================================" "$reset"
+  printf '%s%s%s\n' "$bold_green" "  PERMANENT GLOBAL AI-MEMORY ENV SETUP" "$reset"
+  printf '%s%s%s\n' "$bold_green" "============================================================" "$reset"
+  printf '%s%s %s%s\n' "$green" "Add these vars to:" "$rc_file" "$reset"
+  printf '\n'
+  if [[ "$rc_file" == *.fish ]]; then
+    printf '%s%s%s\n' "$green" "Example:" "$reset"
+    printf '%s%s%s\n' "$green" "  set -Ux MEMORY_MCP_ACCESS_KEY \"your-access-key\"" "$reset"
+    if [[ "$include_client_id" == "1" ]]; then
+      printf '%s%s%s\n' "$green" "  set -Ux MEMORY_MCP_CLIENT_ID \"your-client-id\"" "$reset"
+    fi
+    printf '\n'
+    printf '%s%s%s\n' "$green" "Then open a new terminal session before relaunching your MCP host." "$reset"
+    return 0
+  fi
+
+  printf '%s%s%s\n' "$green" "Example:" "$reset"
+  printf '%s%s%s\n' "$green" "  export MEMORY_MCP_ACCESS_KEY=\"your-access-key\"" "$reset"
+  if [[ "$include_client_id" == "1" ]]; then
+    printf '%s%s%s\n' "$green" "  export MEMORY_MCP_CLIENT_ID=\"your-client-id\"" "$reset"
+  fi
+  printf '\n'
+  printf '%s%s%s\n' "$green" "Then reload your shell with:" "$reset"
+  printf '%s%s%s\n' "$green" "  source \"$rc_file\"" "$reset"
+  printf '%s%s%s\n' "$green" "and relaunch your MCP host." "$reset"
+}
