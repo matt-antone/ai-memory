@@ -64,6 +64,14 @@ npm run onboard
 
 The onboarding CLI walks through project linking, migration push, secret setup, edge-function deploy, agent registration, and an optional smoke test.
 
+If you later run the local uninstall helper, it will ask whether you want to remove the `ai-memory` registration from Codex, Claude, and Cursor:
+
+```bash
+npm run uninstall:local
+```
+
+For each agent you choose to clean up, it creates a timestamped backup first and then removes only the `ai-memory` entry. It still does not remove any Supabase database objects, edge deployments, secrets, or local `.env` files.
+
 ## Recommended setup for agents
 
 For real agents, prefer scoped clients over a shared admin key.

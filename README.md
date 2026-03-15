@@ -110,6 +110,7 @@ If you want a guided end-to-end setup flow for Supabase plus agent registration,
 That guide now includes setup for both Codex and Claude Code, including a `claude mcp add --transport http ...` example for remote MCP registration.
 For Claude Code in this repo, you can also run `npm run setup:claude`.
 For Codex and Cursor in this repo, you can also run `npm run setup:codex` and `npm run setup:cursor`.
+`npm run uninstall:local` now prompts before touching Codex, Cursor, or Claude config. If you choose removal for an agent, it first creates a timestamped backup of the relevant config file when available, then removes only the `ai-memory` registration for that agent. It does not remove the Supabase database, deployed edge function, secrets, or local `.env` files.
 
 ## Runtime auth model
 

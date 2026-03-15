@@ -8,6 +8,7 @@
     "setup:codex": "bash scripts/setup-codex-mcp.sh",
     "setup:claude": "bash scripts/setup-claude-mcp.sh",
     "setup:cursor": "bash scripts/setup-cursor-mcp.sh",
+    "uninstall:local": "bash scripts/uninstall-local-setup.sh",
     "test": "node --test tests/*.js",
     "test:integration": "node --test tests/live-supabase.integration.test.js",
     "smoke:mcp": "node scripts/mcp-smoke-test.mjs"
