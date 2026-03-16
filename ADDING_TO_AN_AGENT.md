@@ -250,13 +250,14 @@ The script prompts for either a project-local install at `.cursor/mcp.json` or a
 If an `ai-memory` entry already exists, it warns and asks whether to merge or overwrite before changing anything.
 If you use scoped client auth, set `MEMORY_MCP_CLIENT_ID` before running the script. The setup helper writes it into the generated MCP config for that install rather than expecting a machine-global env var.
 For project-local installs, the generated config points Cursor at `${workspaceFolder}/.env` so repo-scoped secrets are available to MCP header interpolation.
+Important: Cursor MCP server keys must use only alphanumeric characters and underscores. Use `ai_memory` (not `ai-memory`) as the key inside `mcpServers`.
 
 Example resulting config:
 
 ```json
 {
   "mcpServers": {
-    "ai-memory": {
+    "ai_memory": {
       "type": "http",
       "url": "https://<project-ref>.supabase.co/functions/v1/memory-mcp",
       "headers": {
@@ -272,7 +273,7 @@ And with a scoped client:
 ```json
 {
   "mcpServers": {
-    "ai-memory": {
+    "ai_memory": {
       "type": "http",
       "url": "https://<project-ref>.supabase.co/functions/v1/memory-mcp",
       "headers": {
@@ -292,7 +293,7 @@ After writing the file:
 
 ## Quickstart: OpenClaw
 
-This repo now includes an OpenClaw setup helper that writes an `ai-memory` MCP entry into either a project-local or global OpenClaw config.
+This repo now includes an OpenClaw setup helper that writes an `ai_memory` MCP entry into either a project-local or global OpenClaw config.
 
 ```bash
 npm run setup:openclaw
@@ -305,6 +306,7 @@ The script prompts for either:
 
 If you choose project-local, OpenClaw must be launched with `OPENCLAW_CONFIG_PATH` pointing at that file so it becomes the active config for the repo.
 If an `ai-memory` entry already exists, the script warns and asks whether to merge or overwrite before changing anything.
+Use `ai_memory` as the MCP server key for OpenClaw JSON config as well (alphanumeric/underscore only).
 
 ## How to scope memory safely
 
