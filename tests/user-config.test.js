@@ -11,7 +11,7 @@ import {
   writeUserConfig
 } from "../src/utils/user-config.js";
 
-test("normalizeUserConfig migrates legacy clientId and installs into host agents", () => {
+test("normalizeUserConfig migrates legacy clientId and installs into install records", () => {
   const config = normalizeUserConfig({
     serverName: "ai-memory",
     url: "https://example.test/memory",
@@ -25,7 +25,7 @@ test("normalizeUserConfig migrates legacy clientId and installs into host agents
     }
   });
 
-  assert.deepEqual(config.agents, {
+  assert.deepEqual(config.installs, {
     claude: {
       authMode: "scoped",
       clientId: "legacy-client",
@@ -33,10 +33,10 @@ test("normalizeUserConfig migrates legacy clientId and installs into host agents
       namespaces: []
     }
   });
-  assert.equal(config.currentAgent, "claude");
+  assert.equal(config.currentInstallKey, "claude");
 });
 
-test("normalizeUserConfig migrates intermediate clients shape into agent auth records", () => {
+test("normalizeUserConfig migrates intermediate clients shape into install auth records", () => {
   const config = normalizeUserConfig({
     serverName: "ai-memory",
     url: "https://example.test/memory",
@@ -58,7 +58,7 @@ test("normalizeUserConfig migrates intermediate clients shape into agent auth re
     currentAgent: "reviewerA"
   });
 
-  assert.deepEqual(config.agents, {
+  assert.deepEqual(config.installs, {
     claude: {
       authMode: "scoped",
       clientId: "client-a",
@@ -72,12 +72,12 @@ test("normalizeUserConfig migrates intermediate clients shape into agent auth re
       namespaces: []
     }
   });
-  assert.equal(config.currentAgent, "claude");
+  assert.equal(config.currentInstallKey, "claude");
 });
 
 test("addAgentNamespace deduplicates agent namespaces", () => {
   const initial = normalizeUserConfig({
-    agents: {
+    installs: {
       claude: {
         authMode: "scoped",
         clientId: "client-a",
@@ -93,7 +93,7 @@ test("addAgentNamespace deduplicates agent namespaces", () => {
         ]
       }
     },
-    currentAgent: "claude"
+    currentInstallKey: "claude"
   });
 
   const next = addAgentNamespace(initial, "claude", {
@@ -104,24 +104,24 @@ test("addAgentNamespace deduplicates agent namespaces", () => {
     tags: []
   });
 
-  assert.equal(next.agents.claude.namespaces.length, 1);
+  assert.equal(next.installs.claude.namespaces.length, 1);
 });
 
 test("resolveHostAgent prefers exact host and falls back to single configured agent", () => {
   const direct = resolveHostAgent(normalizeUserConfig({
-    agents: {
+    installs: {
       codex: { authMode: "scoped", clientId: "codex-client", serverName: "", namespaces: [] },
       claude: { authMode: "shared", clientId: "", serverName: "", namespaces: [] }
     },
-    currentAgent: "claude"
+    currentInstallKey: "claude"
   }), "codex");
   assert.equal(direct.match?.agentId, "codex");
 
   const fallback = resolveHostAgent(normalizeUserConfig({
-    agents: {
+    installs: {
       "team-reviewer": { authMode: "shared", clientId: "", serverName: "", namespaces: [] }
     },
-    currentAgent: "team-reviewer"
+    currentInstallKey: "team-reviewer"
   }), "claude");
   assert.equal(fallback.match?.agentId, "team-reviewer");
 });
@@ -135,14 +135,14 @@ test("writeUserConfig creates a backup before migrating legacy or intermediate c
     clients: {
       "client-a": { authMode: "scoped" }
     },
-    agents: {
+    installs: {
       coderA: {
         type: "codex",
         clientId: "client-a",
         namespaces: []
       }
     },
-    currentAgent: "coderA"
+    currentInstallKey: "coderA"
   }, null, 2));
 
   writeUserConfig(configPath, normalizeUserConfig(JSON.parse(fs.readFileSync(configPath, "utf8"))));
@@ -152,6 +152,6 @@ test("writeUserConfig creates a backup before migrating legacy or intermediate c
   const nextConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
   assert.equal(backups.length, 1);
-  assert.equal(nextConfig.currentAgent, "codex");
+  assert.equal(nextConfig.currentInstallKey, "codex");
   assert.equal(Boolean(nextConfig.clients), false);
 });

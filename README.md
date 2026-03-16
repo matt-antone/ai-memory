@@ -106,7 +106,7 @@ The test suite uses the in-memory adapter, so it runs without Supabase.
 
 If you want to attach this memory system to another agent or MCP host, see [ADDING_TO_AN_AGENT.md](/Users/matthewantone/CurrentDevProjects/AI/ai-memory/ADDING_TO_AN_AGENT.md).
 
-If you want a guided end-to-end setup flow for Supabase plus agent registration, run `npm run onboard`.
+If you want a guided end-to-end setup flow for Supabase plus install-key registration, run `npm run onboard`.
 That guide now includes setup for both Codex and Claude Code, including a `claude mcp add --transport http ...` example for remote MCP registration.
 For the user-level agent setup flow, run:
 
@@ -117,11 +117,12 @@ npm run ai-memory -- install claude
 npm run ai-memory -- doctor
 ```
 
-That flow stores canonical non-secret config in `~/.ai-config/ai-memory/config.json`, stores the MCP access key in `~/.ai-config/ai-memory/env`, and keeps centralized `agents` and `currentAgent` state there. Each agent owns its auth mode, scoped client ID when needed, and namespace list.
+That flow stores canonical non-secret config in `~/.ai-config/ai-memory/config.json`, stores the MCP access key in `~/.ai-config/ai-memory/env`, and keeps a centralized install identity there. The selected install key is the write identity used across host setup commands, with optional scoped client ID and namespace list.
 The existing `npm run setup:codex` and `npm run setup:claude` commands now act as thin compatibility wrappers over the same agent setup flow.
 For Codex and Cursor in this repo, you can also run `npm run setup:codex` and `npm run setup:cursor`.
 For OpenClaw in this repo, you can also run `npm run setup:openclaw`.
-Each setup command resolves the matching host agent from `~/.ai-config/ai-memory/config.json`, then prompts for project-local or global host scope and warns before updating an existing `ai-memory` registration.
+Each setup command uses the current install key from `~/.ai-config/ai-memory/config.json`, then prompts for project-local or global host scope and warns before updating an existing `ai-memory` registration.
+Important for Cursor/OpenClaw JSON MCP configs: `mcpServers` keys must use only letters, numbers, and underscores. Use `ai_memory` (not `ai-memory`) for the server key, or the host may fail to load the MCP definition.
 Cursor project installs now write `${env:...}` header references and load `${workspaceFolder}/.env` explicitly, because Cursor does not expand bare `${VAR}` placeholders from repo `.env` files in MCP configs.
 Use `npm run uninstall` to detect project-local and global installs across Codex, Cursor, Claude, and OpenClaw, then remove exactly one selected target per run. `npm run uninstall:local` remains as a compatibility alias to the same flow. These commands do not remove the Supabase database, deployed edge function, secrets, or local `.env` files.
 
@@ -182,7 +183,7 @@ npm run ai-memory -- init
 npm run ai-memory -- install codex
 ```
 
-That flow writes the Codex MCP entry from `~/.ai-config/ai-memory/config.json` using the selected `currentAgent` and its linked client. Reads remain hive-mind by default.
+That flow writes the Codex MCP entry from `~/.ai-config/ai-memory/config.json` using the current install key and its linked client. Reads remain hive-mind by default.
 
 Codex can connect directly to the deployed Supabase edge function. Add an MCP server entry to `~/.codex/config.toml`:
 
