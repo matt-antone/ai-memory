@@ -179,14 +179,28 @@ try {
   }
 
   if (await confirm("Run the MCP smoke test now?", true)) {
-    run("npm", ["run", "smoke:mcp"], {
+    const smokeResult = run("npm", ["run", "smoke:mcp"], {
       env: {
         ...process.env,
         MEMORY_MCP_SMOKE_URL: endpoint,
         MEMORY_MCP_ACCESS_KEY: accessKey,
         MEMORY_MCP_CLIENT_ID: clientId
-      }
+      },
+      allowFailure: true
     });
+    if (smokeResult.status !== 0) {
+      console.warn("\n`npm run smoke:mcp` failed.");
+      if (clientId) {
+        console.warn(
+          `The deployed endpoint likely does not have an up-to-date scoped client entry for '${clientId}'.`
+        );
+        console.warn(
+          "Rerun onboarding and accept the `Set edge function secrets on Supabase?` step, " +
+          "or manually update `MEMORY_MCP_CLIENTS_JSON` before retrying the smoke test."
+        );
+      }
+      throw new Error("Stopping onboarding after failed MCP smoke test.");
+    }
   }
 
   console.log("\nOnboarding complete.");

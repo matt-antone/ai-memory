@@ -8,7 +8,7 @@
         "authorization": "Bearer keep"
       }
     },
-    "ai-memory": {
+    "ai_memory": {
       "type": "http",
       "url": "https://example.test/memory",
       "headers": {

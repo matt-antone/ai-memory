@@ -33,6 +33,13 @@ for (const step of steps) {
   const payload = await response.text();
   if (!response.ok) {
     console.error(`${step.name} failed: ${response.status} ${payload}`);
+    if (response.status === 401 && clientId) {
+      console.error(
+        `Scoped auth hint: the deployed endpoint did not accept client '${clientId}'. ` +
+        "This usually means Supabase secrets were not updated with the latest MEMORY_MCP_CLIENTS_JSON " +
+        "for that client, or the local secret no longer matches the deployed secret."
+      );
+    }
     process.exit(1);
   }
   console.log(`${step.name}: ok`);

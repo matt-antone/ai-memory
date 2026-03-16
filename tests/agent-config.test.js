@@ -84,16 +84,16 @@ test("json upsert preserves unrelated servers", () => {
 test("json upsert supports Cursor env interpolation and env files", () => {
   const next = upsertJsonServerConfig(
     "",
-    "ai-memory",
+    "ai_memory",
     "https://example.test",
     "client-a",
     { envStyle: "cursor", envFile: "${workspaceFolder}/.env" }
   );
   const parsed = JSON.parse(next);
 
-  assert.equal(parsed.mcpServers["ai-memory"].headers["x-memory-key"], "${env:MEMORY_MCP_ACCESS_KEY}");
-  assert.equal(parsed.mcpServers["ai-memory"].headers["x-memory-client-id"], "client-a");
-  assert.equal(parsed.mcpServers["ai-memory"].envFile, "${workspaceFolder}/.env");
+  assert.equal(parsed.mcpServers.ai_memory.headers["x-memory-key"], "${env:MEMORY_MCP_ACCESS_KEY}");
+  assert.equal(parsed.mcpServers.ai_memory.headers["x-memory-client-id"], "client-a");
+  assert.equal(parsed.mcpServers.ai_memory.envFile, "${workspaceFolder}/.env");
 });
 
 test("json inspect recognizes managed and unmanaged entries", () => {
@@ -142,13 +142,42 @@ test("golden codex upsert preserves unrelated sections and rewrites only ai-memo
 test("golden cursor upsert preserves unrelated config and replaces ai-memory entry", () => {
   const actual = upsertJsonServerConfig(
     readFixture("cursor-input.json"),
-    "ai-memory",
+    "ai_memory",
     "https://example.test/memory",
     "client-a",
-    { envStyle: "cursor", envFile: "${workspaceFolder}/.env" }
+    { envStyle: "cursor", envFile: "${workspaceFolder}/.env", aliasesToRemove: ["ai-memory"] }
   );
 
   assert.equal(actual, `${readFixture("cursor-expected.json").trim()}\n`);
+});
+
+test("json upsert can remove a legacy Cursor hyphenated key while writing the normalized key", () => {
+  const initial = JSON.stringify({
+    mcpServers: {
+      "ai-memory": {
+        type: "http",
+        url: "https://old.test",
+        headers: {
+          "x-memory-key": "${env:MEMORY_MCP_ACCESS_KEY}"
+        }
+      }
+    }
+  }, null, 2);
+
+  const next = upsertJsonServerConfig(
+    initial,
+    "ai_memory",
+    "https://example.test/memory",
+    "client-a",
+    {
+      envStyle: "cursor",
+      aliasesToRemove: ["ai-memory"]
+    }
+  );
+  const parsed = JSON.parse(next);
+
+  assert.equal("ai-memory" in parsed.mcpServers, false);
+  assert.equal(parsed.mcpServers.ai_memory.url, "https://example.test/memory");
 });
 
 test("golden openclaw upsert preserves gateway settings and rewrites ai-memory entry", () => {

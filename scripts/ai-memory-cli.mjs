@@ -382,6 +382,11 @@ async function installJsonHost(label, hostId, config, accessKey, clientId, agent
   printInstallSummary(agentId, clientId, configPath, restartMessage);
 }
 
+function normalizeCursorServerName(serverName) {
+  const normalized = String(serverName || "").replace(/[^A-Za-z0-9_]/g, "_");
+  return normalized || "ai_memory";
+}
+
 function resolveJsonHostConfigPath(hostId, scope) {
   if (hostId === "cursor") {
     return scope === "global/user"
