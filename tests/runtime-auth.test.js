@@ -22,7 +22,7 @@ test("runtime policy loads admin keys and scoped clients", () => {
     ])]
   ]));
 
-  assert.equal(policy.adminSecrets.has("admin-secret"), true);
+  assert.equal(policy.adminSecrets.includes("admin-secret"), true);
   assert.equal(policy.clients.get("client-a").namespace.workspace_id, "repo-a");
 });
 
@@ -122,8 +122,15 @@ test("in-memory rate limiter rejects callers over the configured threshold", () 
   assert.doesNotThrow(() => limiter.consume("client-a", 2501));
 });
 
-test("request rate limit key prefers forwarded client IP and falls back to a fingerprint", () => {
-  const proxiedRequest = new Request("https://example.test", {
+test("request rate limit key prefers platform IP headers over x-forwarded-for", () => {
+  const platformRequest = new Request("https://example.test", {
+    headers: {
+      "cf-connecting-ip": "198.51.100.1",
+      "x-forwarded-for": "203.0.113.9, 10.0.0.2",
+      "user-agent": "agent-a"
+    }
+  });
+  const forwardedOnlyRequest = new Request("https://example.test", {
     headers: {
       "x-forwarded-for": "203.0.113.9, 10.0.0.2",
       "user-agent": "agent-a"
@@ -136,7 +143,8 @@ test("request rate limit key prefers forwarded client IP and falls back to a fin
     }
   });
 
-  assert.equal(getRequestRateLimitKey(proxiedRequest), "ip:203.0.113.9");
+  assert.equal(getRequestRateLimitKey(platformRequest), "ip:198.51.100.1");
+  assert.equal(getRequestRateLimitKey(forwardedOnlyRequest), "ip:203.0.113.9");
   assert.equal(
     getRequestRateLimitKey(fallbackRequest),
     "fingerprint:agent-b:https://app.example.test"

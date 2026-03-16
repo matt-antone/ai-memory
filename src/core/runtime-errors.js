@@ -67,7 +67,17 @@ export function normalizeError(error, requestId) {
       return withRequestId(validationError(error.message), requestId);
     }
 
-    return withRequestId(internalError(error.message), requestId);
+    // Log the real message server-side; return a generic message to the client
+    // to avoid leaking database/upstream internals.
+    console.error(JSON.stringify({
+      level: "error",
+      event: "memory_mcp.unhandled_error",
+      request_id: requestId,
+      error_type: error.constructor?.name ?? "Error",
+      message: error.message,
+      stack: error.stack
+    }));
+    return withRequestId(internalError("An internal error occurred"), requestId);
   }
 
   return withRequestId(internalError("Unexpected runtime failure"), requestId);
