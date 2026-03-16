@@ -141,6 +141,14 @@ export function getCurrentAgent(config) {
   return { agentId, ...agent };
 }
 
+export function getAgentServerName(config, agentId) {
+  const normalized = normalizeUserConfig(config);
+  const fallback = String(normalized.serverName || DEFAULT_SERVER_NAME);
+  const agent = normalized.agents[String(agentId || "").trim()];
+  const override = String(agent?.serverName || "").trim();
+  return override || fallback;
+}
+
 export function getAgentRecord(config, agentId) {
   const normalized = normalizeUserConfig(config);
   const agent = normalized.agents[String(agentId || "").trim()];
@@ -344,6 +352,7 @@ function defaultAgentRecord() {
   return {
     authMode: "scoped",
     clientId: "",
+    serverName: "",
     namespaces: []
   };
 }
@@ -356,6 +365,7 @@ function normalizeAgent(input = {}) {
   return {
     authMode,
     clientId,
+    serverName: String(input.serverName || "").trim(),
     namespaces: dedupeNamespaces(Array.isArray(input.namespaces) ? input.namespaces : [])
   };
 }
@@ -434,7 +444,12 @@ function hasLegacyAgentShape(agents) {
   if (!isPlainObject(agents)) {
     return false;
   }
-  return Object.values(agents).some((value) => isPlainObject(value) && ("clientId" in value || "namespaces" in value));
+  return Object.values(agents).some((value) => isPlainObject(value) && (
+    "type" in value
+    || "host" in value
+    || "agentHost" in value
+    || "agentId" in value
+  ));
 }
 
 function backupLegacyConfigIfNeeded(configPath) {

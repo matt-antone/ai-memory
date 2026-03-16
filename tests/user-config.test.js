@@ -29,6 +29,7 @@ test("normalizeUserConfig migrates legacy clientId and installs into host agents
     claude: {
       authMode: "scoped",
       clientId: "legacy-client",
+      serverName: "",
       namespaces: []
     }
   });
@@ -61,11 +62,13 @@ test("normalizeUserConfig migrates intermediate clients shape into agent auth re
     claude: {
       authMode: "scoped",
       clientId: "client-a",
+      serverName: "",
       namespaces: []
     },
     cursor: {
       authMode: "shared",
       clientId: "",
+      serverName: "",
       namespaces: []
     }
   });
@@ -78,6 +81,7 @@ test("addAgentNamespace deduplicates agent namespaces", () => {
       claude: {
         authMode: "scoped",
         clientId: "client-a",
+        serverName: "",
         namespaces: [
           {
             scope: "workspace",
@@ -106,8 +110,8 @@ test("addAgentNamespace deduplicates agent namespaces", () => {
 test("resolveHostAgent prefers exact host and falls back to single configured agent", () => {
   const direct = resolveHostAgent(normalizeUserConfig({
     agents: {
-      codex: { authMode: "scoped", clientId: "codex-client", namespaces: [] },
-      claude: { authMode: "shared", clientId: "", namespaces: [] }
+      codex: { authMode: "scoped", clientId: "codex-client", serverName: "", namespaces: [] },
+      claude: { authMode: "shared", clientId: "", serverName: "", namespaces: [] }
     },
     currentAgent: "claude"
   }), "codex");
@@ -115,7 +119,7 @@ test("resolveHostAgent prefers exact host and falls back to single configured ag
 
   const fallback = resolveHostAgent(normalizeUserConfig({
     agents: {
-      "team-reviewer": { authMode: "shared", clientId: "", namespaces: [] }
+      "team-reviewer": { authMode: "shared", clientId: "", serverName: "", namespaces: [] }
     },
     currentAgent: "team-reviewer"
   }), "claude");

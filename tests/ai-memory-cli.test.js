@@ -31,6 +31,7 @@ test("cli init creates centralized config and env with agent-centric shape", () 
   assert.deepEqual(config.agents.claude, {
     authMode: "scoped",
     clientId: "client-a",
+    serverName: "",
     namespaces: []
   });
   assert.equal(Boolean(config.clients), false);
@@ -106,6 +107,7 @@ exit 0
       claude: {
         authMode: "shared",
         clientId: "",
+        serverName: "",
         namespaces: []
       }
     },
@@ -118,6 +120,7 @@ exit 0
     cwd: tempDir,
     env: {
       AI_MEMORY_CONFIG_DIR: configDir,
+      AI_MEMORY_SERVER_NAME: "ai-memory",
       CLAUDE_MCP_SCOPE: "user",
       PATH: `${fakeBinDir}:${process.env.PATH}`
     },
@@ -131,6 +134,59 @@ exit 0
   assert.equal(updatedConfig.currentAgent, "claude");
   assert.match(log, /--header x-memory-key: secret-xyz/);
   assert.doesNotMatch(log, /x-memory-client-id/);
+});
+
+test("cli install claude uses and persists a custom MCP server name", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-cli-claude-name-"));
+  const configDir = path.join(tempDir, "config");
+  const fakeBinDir = path.join(tempDir, "bin");
+  const logPath = path.join(tempDir, "claude.log");
+
+  fs.mkdirSync(fakeBinDir, { recursive: true });
+  fs.writeFileSync(path.join(fakeBinDir, "claude"), `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "${logPath}"
+if [[ "$1" == "mcp" && "$2" == "get" ]]; then
+  exit 1
+fi
+exit 0
+`);
+  fs.chmodSync(path.join(fakeBinDir, "claude"), 0o755);
+
+  seedConfig(configDir, {
+    serverName: "ai-memory",
+    url: "https://example.test/memory",
+    agents: {
+      claude: {
+        authMode: "shared",
+        clientId: "",
+        serverName: "",
+        namespaces: []
+      }
+    },
+    currentAgent: "claude"
+  }, "secret-xyz", {
+    claude: { authMode: "shared", clientId: "", secret: "secret-xyz" }
+  });
+
+  const result = runCli(["install", "claude"], {
+    cwd: tempDir,
+    env: {
+      AI_MEMORY_CONFIG_DIR: configDir,
+      AI_MEMORY_SERVER_NAME: "ai-memory-reviewer-a",
+      CLAUDE_MCP_SCOPE: "project",
+      PATH: `${fakeBinDir}:${process.env.PATH}`
+    },
+    input: ""
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const updatedConfig = JSON.parse(fs.readFileSync(path.join(configDir, "config.json"), "utf8"));
+  const log = fs.readFileSync(logPath, "utf8");
+
+  assert.equal(updatedConfig.agents.claude.serverName, "ai-memory-reviewer-a");
+  assert.match(log, /mcp get --scope project ai-memory-reviewer-a/);
+  assert.match(log, /mcp add --transport http --scope project ai-memory-reviewer-a https:\/\/example\.test\/memory/);
 });
 
 test("cli install fails clearly when requested host agent is absent", () => {

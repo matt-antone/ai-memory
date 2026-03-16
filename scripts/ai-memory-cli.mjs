@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 
 import {
   envFileMode,
+  getAgentServerName,
   getCurrentAgent,
   readEnvFile,
   readUserConfig,
@@ -141,7 +142,7 @@ async function runInit() {
 }
 
 async function runInstall(type) {
-  const config = readUserConfig(paths.configPath);
+  let config = readUserConfig(paths.configPath);
   const envValues = readEnvFile(paths.envPath);
   const accessKey = envValues.MEMORY_MCP_ACCESS_KEY || process.env.MEMORY_MCP_ACCESS_KEY || "";
 
@@ -153,7 +154,18 @@ async function runInstall(type) {
   }
 
   const selection = resolveInstallSelection(config, type);
-  const nextConfig = selection.updatedConfig;
+  let nextConfig = selection.updatedConfig;
+
+  if (type === "claude") {
+    const defaultServerName = getAgentServerName(nextConfig, selection.agentId);
+    const serverName = (process.env.AI_MEMORY_SERVER_NAME
+      || await ask("Claude MCP server name", defaultServerName)).trim();
+    if (!serverName) {
+      throw new Error("Claude MCP server name is required.");
+    }
+    nextConfig = upsertAgent(nextConfig, selection.agentId, { serverName });
+  }
+
   writeUserConfig(paths.configPath, nextConfig);
 
   const effectiveClientId = selection.authMode === "scoped" ? selection.clientId : "";
@@ -228,6 +240,8 @@ async function installClaude(config, accessKey, clientId, agentId) {
     throw new Error("Claude Code CLI ('claude') is not installed or not on PATH.");
   }
 
+  const serverName = getAgentServerName(config, agentId);
+
   const scope = process.env.CLAUDE_MCP_SCOPE || await choose(
     "Where should Claude store the ai-memory config?",
     [
@@ -238,15 +252,15 @@ async function installClaude(config, accessKey, clientId, agentId) {
     "1"
   );
 
-  const getResult = spawnSync("claude", ["mcp", "get", "--scope", scope, config.serverName], { encoding: "utf8" });
+  const getResult = spawnSync("claude", ["mcp", "get", "--scope", scope, serverName], { encoding: "utf8" });
   if (getResult.status === 0) {
     const overwrite = process.env.AI_MEMORY_OVERWRITE_EXISTING
       ? parseBoolean(process.env.AI_MEMORY_OVERWRITE_EXISTING, true)
-      : await confirm(`Existing Claude ai-memory entry found in scope '${scope}'. Replace it?`, true);
+      : await confirm(`Existing Claude ai-memory entry '${serverName}' found in scope '${scope}'. Replace it?`, true);
     if (!overwrite) {
       throw new Error("Install cancelled.");
     }
-    spawnSync("claude", ["mcp", "remove", "--scope", scope, config.serverName], { stdio: "ignore" });
+    spawnSync("claude", ["mcp", "remove", "--scope", scope, serverName], { stdio: "ignore" });
   }
 
   const addArgs = [
@@ -256,7 +270,7 @@ async function installClaude(config, accessKey, clientId, agentId) {
     "http",
     "--scope",
     scope,
-    config.serverName,
+    serverName,
     config.url
   ];
   addArgs.push("--header", `x-memory-key: ${accessKey}`);
@@ -269,14 +283,14 @@ async function installClaude(config, accessKey, clientId, agentId) {
     if (isClaudeAlreadyExistsError(combinedOutput)) {
       const overwrite = process.env.AI_MEMORY_OVERWRITE_EXISTING
         ? parseBoolean(process.env.AI_MEMORY_OVERWRITE_EXISTING, true)
-        : await confirm(`Claude reports '${config.serverName}' already exists in scope '${scope}'. Replace it?`, true);
+        : await confirm(`Claude reports '${serverName}' already exists in scope '${scope}'. Replace it?`, true);
       if (!overwrite) {
         throw new Error("Install cancelled.");
       }
 
-      const removeResult = runCapture("claude", ["mcp", "remove", "--scope", scope, config.serverName]);
+      const removeResult = runCapture("claude", ["mcp", "remove", "--scope", scope, serverName]);
       if (removeResult.status !== 0) {
-        throw new Error(formatCommandFailure("claude", ["mcp", "remove", "--scope", scope, config.serverName], removeResult));
+        throw new Error(formatCommandFailure("claude", ["mcp", "remove", "--scope", scope, serverName], removeResult));
       }
 
       const retryResult = runCapture("claude", addArgs);
@@ -288,7 +302,7 @@ async function installClaude(config, accessKey, clientId, agentId) {
     }
   }
 
-  printInstallSummary(agentId, clientId, `Claude scope '${scope}'`, "Restart Claude if it was already running.");
+  printInstallSummary(agentId, clientId, `Claude scope '${scope}' as '${serverName}'`, "Restart Claude if it was already running.");
 }
 
 async function installJsonHost(label, hostId, config, clientId, agentId) {
@@ -346,6 +360,7 @@ function runDoctor() {
   const issues = [];
   const configExists = fs.existsSync(paths.configPath);
   const envExists = fs.existsSync(paths.envPath);
+  let hasScopedAgentsInRawConfig = false;
 
   if (!configExists) {
     issues.push(`Missing config file: ${paths.configPath}`);
@@ -370,6 +385,12 @@ function runDoctor() {
     const rawAgents = rawConfig?.agents && typeof rawConfig.agents === "object" && !Array.isArray(rawConfig.agents)
       ? rawConfig.agents
       : {};
+    hasScopedAgentsInRawConfig = Object.values(rawAgents).some((agent) => (
+      agent
+      && typeof agent === "object"
+      && !Array.isArray(agent)
+      && agent.authMode !== "shared"
+    ));
     for (const [agentId, agent] of Object.entries(rawAgents)) {
       if (!agent || typeof agent !== "object" || Array.isArray(agent)) {
         issues.push(`Agent '${agentId}' must be an object.`);
@@ -405,7 +426,7 @@ function runDoctor() {
       issues.push(`Env file permissions should be 600, found ${mode.toString(8)}.`);
     }
 
-    if (config && Object.values(config.agents).some((agent) => agent.authMode === "scoped")) {
+    if (hasScopedAgentsInRawConfig || (config && Object.values(config.agents).some((agent) => agent.authMode === "scoped"))) {
       const secrets = parseAgentSecrets(envValues.MEMORY_MCP_AGENT_SECRETS_JSON);
       if (Object.keys(secrets).length === 0) {
         issues.push("Env file is missing parseable MEMORY_MCP_AGENT_SECRETS_JSON for scoped agents.");
