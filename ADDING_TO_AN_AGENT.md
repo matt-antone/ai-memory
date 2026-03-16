@@ -71,7 +71,7 @@ If you want one guided flow instead of following the individual steps manually, 
 npm run onboard
 ```
 
-The onboarding CLI walks through project linking, migration push, secret setup, edge-function deploy, agent registration, and an optional smoke test.
+The onboarding CLI walks through project linking, migration push, secret setup, edge-function deploy, install-key registration, and an optional smoke test.
 
 If you later run the uninstall helper, it will detect installed `ai-memory` registrations for Codex, Claude, Cursor, and OpenClaw across project-local and global scopes, then ask which single target you want to remove:
 
@@ -87,8 +87,8 @@ For real agents, prefer scoped clients over a shared admin key.
 
 Why:
 
-- each agent gets its own secret
-- each agent can be locked to a namespace
+- each install key gets its own secret
+- each install key can be locked to a namespace
 - server-side namespace enforcement reduces accidental cross-project recall
 
 Example `MEMORY_MCP_CLIENTS_JSON` entry:
@@ -122,7 +122,7 @@ This repo also includes a helper script:
 npm run setup:codex
 ```
 
-The script resolves the current agent from `~/.ai-config/ai-memory/config.json`, then prompts for either a project-local install at `.codex/config.toml` or a global install at `~/.codex/config.toml`.
+The script resolves the current install key from `~/.ai-config/ai-memory/config.json`, then prompts for either a project-local install at `.codex/config.toml` or a global install at `~/.codex/config.toml`.
 If an `ai-memory` entry already exists, it warns and asks whether to merge or overwrite before changing anything.
 
 ```toml
@@ -145,7 +145,7 @@ Important:
 - if the host is already running, fully restart it after config changes
 - the edge function fails closed if credentials are missing or blank
 
-If you use a scoped client, the setup flow writes that client ID into the generated host config for the current agent. Do not set a machine-global `MEMORY_MCP_CLIENT_ID` when multiple agents or repos share the same computer.
+If you use a scoped client, the setup flow writes that client ID into the generated host config for the current install key. Do not set a machine-global `MEMORY_MCP_CLIENT_ID` when multiple installs or repos share the same computer.
 
 ## Quickstart: Claude Code
 
@@ -157,7 +157,7 @@ This repo also includes a helper script:
 npm run setup:claude
 ```
 
-The script resolves the current agent from `~/.ai-config/ai-memory/config.json`, then prompts for `project`, `user`, or `local` Claude scope before registering the server.
+The script resolves the current install key from `~/.ai-config/ai-memory/config.json`, then prompts for `project`, `user`, or `local` Claude scope before registering the server.
 If an `ai-memory` entry already exists in that scope, it warns before replacing it.
 
 You can override the endpoint or scope when needed:

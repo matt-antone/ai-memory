@@ -7,9 +7,8 @@ import { stdin as input, stdout as output } from "node:process";
 import { spawnSync } from "node:child_process";
 import { resolveChoice } from "../src/utils/prompt.js";
 import {
-  BUILTIN_AGENT_IDS,
   addAgentNamespace,
-  listAgentIds,
+  getCurrentAgent,
   readEnvFile,
   readUserConfig,
   resolveAiMemoryPaths,
@@ -38,7 +37,7 @@ let rl = createPromptInterface();
 
 try {
   console.log("AI Memory onboarding");
-  console.log("This will guide you through Supabase setup, function deployment, and agent registration.\n");
+  console.log("This will guide you through Supabase setup, function deployment, and install registration.\n");
 
   let config = readUserConfig(configPaths.configPath);
   const aiMemoryEnv = readEnvFile(configPaths.envPath);
@@ -52,11 +51,11 @@ try {
     url: endpoint
   };
 
-  const agentResolution = await resolveAgent(config);
-  config = agentResolution.config;
-  const agentId = agentResolution.agentId;
-  const authMode = agentResolution.authMode;
-  const clientId = authMode === "scoped" ? agentResolution.clientId : "";
+  const installResolution = await resolveInstallIdentity(config);
+  config = installResolution.config;
+  const installKey = installResolution.installKey;
+  const authMode = installResolution.authMode;
+  const clientId = authMode === "scoped" ? installResolution.clientId : "";
 
   const accessKey = await ask(
     authMode === "shared" ? "Shared MCP access key" : "Scoped client secret",
@@ -70,8 +69,8 @@ try {
     topic: null,
     tags: []
   };
-  config = ensureAgentNamespace(config, agentId, namespace);
-  config = setCurrentAgent(config, agentId);
+  config = ensureAgentNamespace(config, installKey, namespace);
+  config = setCurrentAgent(config, installKey);
   const now = new Date().toISOString();
   config.createdAt = config.createdAt || now;
   config.updatedAt = now;
@@ -80,7 +79,7 @@ try {
   const agentSecrets = mergeAgentSecretInventory(
     aiMemoryEnv.MEMORY_MCP_AGENT_SECRETS_JSON,
     {
-      [agentId]: {
+      [installKey]: {
         authMode,
         clientId,
         secret: accessKey
@@ -192,7 +191,7 @@ try {
 
   console.log("\nOnboarding complete.");
   console.log(`Endpoint: ${endpoint}`);
-  console.log(`Current agent: ${agentId}`);
+  console.log(`Install key: ${installKey}`);
   if (clientId) {
     console.log(`Scoped client ID: ${clientId}`);
   }
@@ -207,28 +206,15 @@ try {
   rl?.close();
 }
 
-async function resolveAgent(config) {
-  const agentIds = listAgentIds(config);
-  if (agentIds.length === 0) {
-    return createAgent(config, "");
-  }
+async function resolveInstallIdentity(config) {
+  const current = getCurrentAgent(config);
+  const fallbackInstallKey = current?.agentId || process.env.AI_MEMORY_INSTALL_KEY || "personal-codex";
+  const installKey = await ask("Install key", fallbackInstallKey);
+  validateAgentId(installKey);
 
-  const selection = await choose(
-    "Select an agent host",
-    [
-      ...agentIds.map((agentId, index) => ({ key: String(index + 1), label: agentId, value: agentId })),
-      { key: String(agentIds.length + 1), label: "new agent", value: "__new__" }
-    ],
-    "1"
-  );
-
-  if (selection === "__new__") {
-    return createAgent(config, "");
-  }
-
-  const existing = config.agents[selection];
+  const existing = config.installs?.[installKey];
   const authMode = await choose(
-    `Auth mode for '${selection}'`,
+    `Auth mode for install key '${installKey}'`,
     [
       { key: "1", label: "Shared key", value: "shared" },
       { key: "2", label: "Scoped client", value: "scoped" }
@@ -236,60 +222,22 @@ async function resolveAgent(config) {
     existing?.authMode === "shared" ? "1" : "2"
   );
   const clientId = authMode === "scoped"
-    ? await ask("Scoped client ID", existing?.clientId || `${selection}-memory`)
+    ? await ask("Scoped client ID", existing?.clientId || `${installKey}`)
     : "";
   if (authMode === "scoped") {
     validateClientId(clientId);
   }
 
   return {
-    config: upsertAgent(config, selection, { authMode, clientId }),
-    agentId: selection,
-    authMode,
-    clientId
-  };
-}
-
-async function createAgent(config, fallbackAgentId) {
-  const selection = await choose(
-    "Choose the new agent host",
-    [
-      ...BUILTIN_AGENT_IDS.map((agentId, index) => ({ key: String(index + 1), label: agentId, value: agentId })),
-      { key: String(BUILTIN_AGENT_IDS.length + 1), label: "custom", value: "__custom__" }
-    ],
-    "1"
-  );
-
-  const agentId = selection === "__custom__"
-    ? await ask("Agent ID", fallbackAgentId || "team-agent")
-    : selection;
-  validateAgentId(agentId);
-
-  const authMode = await choose(
-    "Auth mode",
-    [
-      { key: "1", label: "Shared key", value: "shared" },
-      { key: "2", label: "Scoped client", value: "scoped" }
-    ],
-    "2"
-  );
-  const clientId = authMode === "scoped"
-    ? await ask("Scoped client ID", `${agentId}-memory`)
-    : "";
-  if (authMode === "scoped") {
-    validateClientId(clientId);
-  }
-
-  return {
-    config: upsertAgent(config, agentId, { authMode, clientId }),
-    agentId,
+    config: upsertAgent(config, installKey, { authMode, clientId }),
+    installKey,
     authMode,
     clientId
   };
 }
 
 function ensureAgentNamespace(config, agentId, namespace) {
-  const namespaces = config.agents[agentId]?.namespaces ?? [];
+  const namespaces = config.installs[agentId]?.namespaces ?? [];
   const exists = namespaces.some((entry) => JSON.stringify(entry) === JSON.stringify(namespace));
   if (exists) {
     return config;
@@ -300,22 +248,22 @@ function ensureAgentNamespace(config, agentId, namespace) {
 function buildScopedClientsJson(config, agentSecrets) {
   const scopedClients = [];
 
-  for (const [agentId, agent] of Object.entries(config.agents)) {
-    if (agent.authMode !== "scoped") {
+  for (const [installKey, install] of Object.entries(config.installs)) {
+    if (install.authMode !== "scoped") {
       continue;
     }
 
-    const inventory = agentSecrets[agentId];
+    const inventory = agentSecrets[installKey];
     if (!inventory?.secret) {
-      throw new Error(`Missing local secret for scoped agent '${agentId}'. Re-run onboarding for that agent before setting Supabase secrets.`);
+      throw new Error(`Missing local secret for scoped install '${installKey}'. Re-run onboarding for that install key before setting Supabase secrets.`);
     }
     if (!inventory?.clientId) {
-      throw new Error(`Scoped agent '${agentId}' is missing a local client ID in the env inventory.`);
+      throw new Error(`Scoped install '${installKey}' is missing a local client ID in the env inventory.`);
     }
 
-    const namespace = agent.namespaces[0];
+    const namespace = install.namespaces[0];
     if (!namespace) {
-      throw new Error(`Scoped agent '${agentId}' has no namespace. Add a namespace before setting Supabase secrets.`);
+      throw new Error(`Scoped install '${installKey}' has no namespace. Add a namespace before setting Supabase secrets.`);
     }
 
     scopedClients.push({

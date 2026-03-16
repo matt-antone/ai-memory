@@ -10,12 +10,13 @@ import { spawnSync } from "node:child_process";
 
 import {
   envFileMode,
+  getAgentRecord,
   getAgentServerName,
   getCurrentAgent,
+  listAgentIds,
   readEnvFile,
   readUserConfig,
   resolveAiMemoryPaths,
-  resolveHostAgent,
   setCurrentAgent,
   upsertAgent,
   validateAgentId,
@@ -27,6 +28,7 @@ import {
 import {
   inspectCodexConfig,
   inspectJsonServerConfig,
+  removeJsonServerConfig,
   upsertCodexConfig,
   upsertJsonServerConfig
 } from "../src/utils/agent-config.js";
@@ -75,7 +77,7 @@ async function main() {
   }
 
   if (command === "doctor") {
-    runDoctor();
+    await runDoctor();
     return process.exitCode ?? 0;
   }
 
@@ -91,12 +93,12 @@ async function runInit() {
   const accessKey = process.env.AI_MEMORY_INIT_ACCESS_KEY
     || await ask("Memory MCP access key", currentEnv.MEMORY_MCP_ACCESS_KEY || process.env.MEMORY_MCP_ACCESS_KEY || "");
 
-  let agentId = process.env.AI_MEMORY_INIT_AGENT_ID || "";
-  if (!agentId) {
+  let installKey = process.env.AI_MEMORY_INIT_INSTALL_KEY || process.env.AI_MEMORY_INIT_AGENT_ID || "";
+  if (!installKey) {
     const existingCurrent = getCurrentAgent(config);
-    agentId = await ask("Current agent ID", existingCurrent?.agentId || defaultAgentId("codex"));
+    installKey = await ask("Install key", existingCurrent?.agentId || "personal-codex");
   }
-  validateAgentId(agentId);
+  validateAgentId(installKey);
 
   let authMode = process.env.AI_MEMORY_INIT_AUTH_MODE || "";
   if (!authMode) {
@@ -108,7 +110,7 @@ async function runInit() {
   let clientId = process.env.AI_MEMORY_INIT_CLIENT_ID || "";
   if (authMode === "scoped" && !clientId) {
     const existingCurrent = getCurrentAgent(config);
-    clientId = await ask("Scoped client ID", existingCurrent?.clientId || process.env.MEMORY_MCP_CLIENT_ID || "ai-memory-client");
+    clientId = await ask("Scoped client ID", existingCurrent?.clientId || process.env.MEMORY_MCP_CLIENT_ID || installKey);
   }
   if (authMode === "scoped") {
     validateClientId(clientId);
@@ -120,8 +122,8 @@ async function runInit() {
     ...config,
     url
   };
-  config = upsertAgent(config, agentId, { authMode, clientId });
-  config = setCurrentAgent(config, agentId);
+  config = upsertAgent(config, installKey, { authMode, clientId });
+  config = setCurrentAgent(config, installKey);
   const now = new Date().toISOString();
   config.createdAt = config.createdAt || now;
   config.updatedAt = now;
@@ -130,7 +132,7 @@ async function runInit() {
   writeUserConfig(paths.configPath, config);
 
   const agentSecrets = parseAgentSecrets(currentEnv.MEMORY_MCP_AGENT_SECRETS_JSON);
-  agentSecrets[agentId] = { authMode, clientId, secret: accessKey };
+  agentSecrets[installKey] = { authMode, clientId, secret: accessKey };
   writeEnvFile(paths.envPath, {
     MEMORY_MCP_ACCESS_KEY: accessKey,
     MEMORY_MCP_CLIENT_ID: clientId,
@@ -178,25 +180,46 @@ async function runInstall(type) {
     return;
   }
   if (type === "cursor") {
-    await installJsonHost("Cursor", "cursor", nextConfig, effectiveClientId, selection.agentId);
+    await installJsonHost("Cursor", "cursor", nextConfig, accessKey, effectiveClientId, selection.agentId);
     return;
   }
-  await installJsonHost("OpenClaw", "openclaw", nextConfig, effectiveClientId, selection.agentId);
+  await installJsonHost("OpenClaw", "openclaw", nextConfig, accessKey, effectiveClientId, selection.agentId);
 }
 
-function resolveInstallSelection(config, hostId) {
-  const resolved = resolveHostAgent(config, hostId);
-  if (!resolved.match) {
-    throw new Error(`No '${hostId}' agent is configured in ${paths.configPath}. Run 'npm run onboard' and create that host agent first.`);
+function resolveInstallSelection(config, _hostId) {
+  const current = getCurrentAgent(config);
+  if (current) {
+    const updatedConfig = setCurrentAgent(config, current.agentId);
+    return {
+      updatedConfig,
+      agentId: current.agentId,
+      clientId: current.clientId,
+      authMode: current.authMode
+    };
   }
 
-  const updatedConfig = setCurrentAgent(config, resolved.match.agentId);
-  return {
-    updatedConfig,
-    agentId: resolved.match.agentId,
-    clientId: resolved.match.clientId,
-    authMode: resolved.match.authMode
-  };
+  const installKeys = listAgentIds(config);
+  if (installKeys.length === 1) {
+    const only = getAgentRecord(config, installKeys[0]);
+    if (only) {
+      const updatedConfig = setCurrentAgent(config, only.agentId);
+      return {
+        updatedConfig,
+        agentId: only.agentId,
+        clientId: only.clientId,
+        authMode: only.authMode
+      };
+    }
+  }
+
+  if (installKeys.length === 0) {
+    throw new Error(`No install key is configured in ${paths.configPath}. Run 'npm run onboard' or 'npm run ai-memory -- init' first.`);
+  }
+
+  throw new Error(
+    `No current install key is set in ${paths.configPath}. ` +
+    `Set one with 'npm run ai-memory -- init' (or keep exactly one install key to auto-resolve).`
+  );
 }
 
 async function installCodex(config, accessKey, clientId, agentId) {
@@ -305,7 +328,7 @@ async function installClaude(config, accessKey, clientId, agentId) {
   printInstallSummary(agentId, clientId, `Claude scope '${scope}' as '${serverName}'`, "Restart Claude if it was already running.");
 }
 
-async function installJsonHost(label, hostId, config, clientId, agentId) {
+async function installJsonHost(label, hostId, config, accessKey, clientId, agentId) {
   const scope = process.env.AI_MEMORY_INSTALL_SCOPE || await choose(
     `Where should ${label} store the ai-memory config?`,
     [
@@ -317,12 +340,16 @@ async function installJsonHost(label, hostId, config, clientId, agentId) {
 
   const pathConfig = resolveJsonHostConfigPath(hostId, scope);
   const envStyle = hostId === "cursor" ? "cursor" : "plain";
-  const envFile = hostId === "cursor" && scope === "project/local" ? "${workspaceFolder}/.env" : undefined;
+  const envFile = hostId === "cursor"
+    ? (scope === "project/local" ? "${workspaceFolder}/.env" : paths.envPath)
+    : undefined;
   const overrideEnvVar = hostId === "cursor" ? "AI_MEMORY_CURSOR_CONFIG_PATH" : "AI_MEMORY_OPENCLAW_CONFIG_PATH";
   const configPath = process.env[overrideEnvVar] || await ask(`${label} config path`, pathConfig);
+  const configuredServerName = getAgentServerName(config, agentId);
+  const hostServerName = resolveJsonHostServerName(configuredServerName, hostId);
 
   const existingContent = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "";
-  const inspect = inspectJsonServerConfig(existingContent, config.serverName);
+  const inspect = inspectJsonServerConfig(existingContent, hostServerName);
   if (inspect.exists) {
     const overwrite = process.env.AI_MEMORY_OVERWRITE_EXISTING
       ? parseBoolean(process.env.AI_MEMORY_OVERWRITE_EXISTING, true)
@@ -332,9 +359,19 @@ async function installJsonHost(label, hostId, config, clientId, agentId) {
     }
   }
 
-  const nextContent = upsertJsonServerConfig(existingContent, config.serverName, config.url, clientId, {
+  const keyOverride = hostId === "cursor" ? accessKey : "";
+  let baseContent = existingContent;
+  if (hostServerName !== configuredServerName) {
+    const legacyInspect = inspectJsonServerConfig(baseContent, configuredServerName);
+    if (legacyInspect.exists && legacyInspect.managed) {
+      baseContent = removeJsonServerConfig(baseContent, configuredServerName);
+    }
+  }
+
+  const nextContent = upsertJsonServerConfig(baseContent, hostServerName, config.url, clientId, {
     envStyle,
-    envFile
+    envFile,
+    accessKey: keyOverride
   });
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, nextContent);
@@ -356,11 +393,37 @@ function resolveJsonHostConfigPath(hostId, scope) {
     : path.join(cwd, ".openclaw", "openclaw.json");
 }
 
-function runDoctor() {
+function resolveJsonHostServerName(serverName, hostId) {
+  const baseName = String(serverName || "").trim() || "ai-memory";
+  if (hostId !== "cursor" && hostId !== "openclaw") {
+    return baseName;
+  }
+  return baseName.replace(/[^A-Za-z0-9_]/g, "_");
+}
+
+async function runDoctor() {
+  const runId = `doctor-${Date.now()}`;
+  // #region agent log
+  debugLog({
+    runId,
+    hypothesisId: "H1",
+    location: "scripts/ai-memory-cli.mjs:runDoctor:start",
+    message: "Doctor run started",
+    data: {
+      configPath: paths.configPath,
+      envPath: paths.envPath
+    }
+  });
+  // #endregion
   const issues = [];
   const configExists = fs.existsSync(paths.configPath);
   const envExists = fs.existsSync(paths.envPath);
-  let hasScopedAgentsInRawConfig = false;
+  let hasScopedInstallsInRawConfig = false;
+  let configUrl = "";
+  let configCurrentInstallKey = "";
+  let configInstallCount = 0;
+  let currentInstallAuthMode = "";
+  let currentInstallClientIdPresent = false;
 
   if (!configExists) {
     issues.push(`Missing config file: ${paths.configPath}`);
@@ -373,51 +436,88 @@ function runDoctor() {
   if (configExists) {
     const rawConfig = readRawJson(paths.configPath);
     config = readUserConfig(paths.configPath);
+    configUrl = String(config.url || "");
+    configCurrentInstallKey = String(config.currentInstallKey || "");
+    configInstallCount = Object.keys(config.installs || {}).length;
+    const currentInstall = configCurrentInstallKey ? config.installs[configCurrentInstallKey] : null;
+    currentInstallAuthMode = String(currentInstall?.authMode || "");
+    currentInstallClientIdPresent = Boolean(String(currentInstall?.clientId || "").trim());
+    // #region agent log
+    debugLog({
+      runId,
+      hypothesisId: "H1",
+      location: "scripts/ai-memory-cli.mjs:runDoctor:config",
+      message: "Loaded ai-memory config",
+      data: {
+        configUrl,
+        currentInstallKey: configCurrentInstallKey,
+        installCount: configInstallCount,
+        currentInstallAuthMode,
+        currentInstallClientIdPresent
+      }
+    });
+    // #endregion
     if (!config.url) {
       issues.push("Config file is missing 'url'.");
     }
-    if (!String(rawConfig?.currentAgent || "").trim()) {
-      issues.push("Config file is missing 'currentAgent'.");
-    } else if (!config.agents[String(rawConfig.currentAgent).trim()]) {
-      issues.push(`Current agent '${String(rawConfig.currentAgent).trim()}' does not exist.`);
+    const rawCurrentInstallKey = String(rawConfig?.currentInstallKey ?? rawConfig?.currentAgent ?? "").trim();
+    if (!rawCurrentInstallKey) {
+      issues.push("Config file is missing 'currentInstallKey'.");
+    } else if (!config.installs[rawCurrentInstallKey]) {
+      issues.push(`Current install key '${rawCurrentInstallKey}' does not exist.`);
     }
 
-    const rawAgents = rawConfig?.agents && typeof rawConfig.agents === "object" && !Array.isArray(rawConfig.agents)
-      ? rawConfig.agents
-      : {};
-    hasScopedAgentsInRawConfig = Object.values(rawAgents).some((agent) => (
-      agent
-      && typeof agent === "object"
-      && !Array.isArray(agent)
-      && agent.authMode !== "shared"
+    const rawInstalls = rawConfig?.installs && typeof rawConfig.installs === "object" && !Array.isArray(rawConfig.installs)
+      ? rawConfig.installs
+      : (rawConfig?.agents && typeof rawConfig.agents === "object" && !Array.isArray(rawConfig.agents)
+        ? rawConfig.agents
+        : {});
+    hasScopedInstallsInRawConfig = Object.values(rawInstalls).some((install) => (
+      install
+      && typeof install === "object"
+      && !Array.isArray(install)
+      && install.authMode !== "shared"
     ));
-    for (const [agentId, agent] of Object.entries(rawAgents)) {
-      if (!agent || typeof agent !== "object" || Array.isArray(agent)) {
-        issues.push(`Agent '${agentId}' must be an object.`);
+    for (const [installKey, install] of Object.entries(rawInstalls)) {
+      if (!install || typeof install !== "object" || Array.isArray(install)) {
+        issues.push(`Install '${installKey}' must be an object.`);
         continue;
       }
-      const authMode = agent.authMode === "shared" ? "shared" : "scoped";
-      const clientId = String(agent.clientId || "").trim();
+      const authMode = install.authMode === "shared" ? "shared" : "scoped";
+      const clientId = String(install.clientId || "").trim();
       if (authMode === "scoped" && !clientId) {
-        issues.push(`Scoped agent '${agentId}' is missing a scoped client ID.`);
+        issues.push(`Scoped install '${installKey}' is missing a scoped client ID.`);
       }
       if (authMode === "shared" && clientId) {
-        issues.push(`Shared agent '${agentId}' must not define a scoped client ID.`);
+        issues.push(`Shared install '${installKey}' must not define a scoped client ID.`);
       }
     }
 
-    for (const [agentId, agent] of Object.entries(config.agents)) {
-      if (agent.authMode === "scoped" && !agent.clientId) {
-        issues.push(`Scoped agent '${agentId}' is missing a scoped client ID.`);
+    for (const [installKey, install] of Object.entries(config.installs)) {
+      if (install.authMode === "scoped" && !install.clientId) {
+        issues.push(`Scoped install '${installKey}' is missing a scoped client ID.`);
       }
-      if (agent.authMode === "shared" && agent.clientId) {
-        issues.push(`Shared agent '${agentId}' must not define a scoped client ID.`);
+      if (install.authMode === "shared" && install.clientId) {
+        issues.push(`Shared install '${installKey}' must not define a scoped client ID.`);
       }
     }
   }
 
   if (envExists) {
     const envValues = readEnvFile(paths.envPath);
+    // #region agent log
+    debugLog({
+      runId,
+      hypothesisId: "H2",
+      location: "scripts/ai-memory-cli.mjs:runDoctor:env",
+      message: "Loaded ai-memory env",
+      data: {
+        hasAccessKey: Boolean(String(envValues.MEMORY_MCP_ACCESS_KEY || "").trim()),
+        hasClientId: Boolean(String(envValues.MEMORY_MCP_CLIENT_ID || "").trim()),
+        hasAgentSecretsJson: Boolean(String(envValues.MEMORY_MCP_AGENT_SECRETS_JSON || "").trim())
+      }
+    });
+    // #endregion
     if (!envValues.MEMORY_MCP_ACCESS_KEY) {
       issues.push("Env file is missing MEMORY_MCP_ACCESS_KEY.");
     }
@@ -426,11 +526,158 @@ function runDoctor() {
       issues.push(`Env file permissions should be 600, found ${mode.toString(8)}.`);
     }
 
-    if (hasScopedAgentsInRawConfig || (config && Object.values(config.agents).some((agent) => agent.authMode === "scoped"))) {
+    if (hasScopedInstallsInRawConfig || (config && Object.values(config.installs).some((install) => install.authMode === "scoped"))) {
       const secrets = parseAgentSecrets(envValues.MEMORY_MCP_AGENT_SECRETS_JSON);
+      // #region agent log
+      debugLog({
+        runId,
+        hypothesisId: "H2",
+        location: "scripts/ai-memory-cli.mjs:runDoctor:scoped-secrets",
+        message: "Checked scoped install secrets",
+        data: {
+          scopedInstallExpected: true,
+          scopedSecretsCount: Object.keys(secrets).length
+        }
+      });
+      // #endregion
       if (Object.keys(secrets).length === 0) {
-        issues.push("Env file is missing parseable MEMORY_MCP_AGENT_SECRETS_JSON for scoped agents.");
+        issues.push("Env file is missing parseable MEMORY_MCP_AGENT_SECRETS_JSON for scoped installs.");
       }
+    }
+  }
+
+  const cursorPaths = [
+    path.join(cwd, ".cursor", "mcp.json"),
+    path.join(os.homedir(), ".cursor", "mcp.json")
+  ];
+  const configuredCursorServerName = getAgentServerName(config || {}, configCurrentInstallKey || "cursor");
+  const normalizedCursorServerName = resolveJsonHostServerName(configuredCursorServerName, "cursor");
+  for (const cursorPath of cursorPaths) {
+    const exists = fs.existsSync(cursorPath);
+    let hasServer = false;
+    let managed = false;
+    let entryType = "";
+    let entryUrl = "";
+    let hasEnvFile = false;
+    let keyHeader = "";
+    let selectedServerName = configuredCursorServerName;
+    if (exists) {
+      const raw = fs.readFileSync(cursorPath, "utf8");
+      const configuredInspect = inspectJsonServerConfig(raw, configuredCursorServerName);
+      const normalizedInspect = normalizedCursorServerName === configuredCursorServerName
+        ? configuredInspect
+        : inspectJsonServerConfig(raw, normalizedCursorServerName);
+      const inspection = normalizedInspect.exists ? normalizedInspect : configuredInspect;
+      selectedServerName = normalizedInspect.exists ? normalizedCursorServerName : configuredCursorServerName;
+      hasServer = inspection.exists;
+      managed = inspection.managed;
+      const parsed = readRawJson(cursorPath) || {};
+      const entry = parsed?.mcpServers?.[selectedServerName] || {};
+      entryType = String(entry.type || "");
+      entryUrl = String(entry.url || "");
+      hasEnvFile = Boolean(entry.envFile);
+      keyHeader = String(entry?.headers?.["x-memory-key"] || "");
+    }
+    // #region agent log
+    debugLog({
+      runId,
+      hypothesisId: "H3",
+      location: "scripts/ai-memory-cli.mjs:runDoctor:cursor-config",
+      message: "Inspected Cursor MCP config path",
+      data: {
+        cursorPath,
+        exists,
+        configuredServerName: configuredCursorServerName,
+        normalizedServerName: normalizedCursorServerName,
+        selectedServerName,
+        hasServer,
+        managed,
+        entryType,
+        entryUrl,
+        hasEnvFile,
+        usesCursorEnvRef: keyHeader === "${env:MEMORY_MCP_ACCESS_KEY}",
+        usesLegacyEnvRef: keyHeader === "${MEMORY_MCP_ACCESS_KEY}"
+      }
+    });
+    // #endregion
+  }
+
+  if (configUrl) {
+    try {
+      const envValues = envExists ? readEnvFile(paths.envPath) : {};
+      const headers = {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream"
+      };
+      const accessKey = String(envValues.MEMORY_MCP_ACCESS_KEY || "");
+      const probeBody = JSON.stringify({
+        jsonrpc: "2.0",
+        id: "doctor-ping",
+        method: "tools/list",
+        params: {}
+      });
+      const noAuthResponse = await fetch(configUrl, {
+        method: "POST",
+        headers,
+        body: probeBody
+      });
+      // #region agent log
+      debugLog({
+        runId,
+        hypothesisId: "H4",
+        location: "scripts/ai-memory-cli.mjs:runDoctor:endpoint-probe-no-auth",
+        message: "Probed MCP endpoint without auth headers",
+        data: {
+          endpoint: configUrl,
+          status: noAuthResponse.status,
+          ok: noAuthResponse.ok
+        }
+      });
+      // #endregion
+      if (accessKey) {
+        const authedHeaders = {
+          ...headers,
+          "x-memory-key": accessKey
+        };
+        if (currentInstallAuthMode === "scoped") {
+          const scopedClientId = String(envValues.MEMORY_MCP_CLIENT_ID || "");
+          if (scopedClientId) {
+            authedHeaders["x-memory-client-id"] = scopedClientId;
+          }
+        }
+        const authedResponse = await fetch(configUrl, {
+          method: "POST",
+          headers: authedHeaders,
+          body: probeBody
+        });
+        // #region agent log
+        debugLog({
+          runId,
+          hypothesisId: "H5",
+          location: "scripts/ai-memory-cli.mjs:runDoctor:endpoint-probe-with-auth",
+          message: "Probed MCP endpoint with auth headers",
+          data: {
+            endpoint: configUrl,
+            status: authedResponse.status,
+            ok: authedResponse.ok,
+            scopedAuthMode: currentInstallAuthMode === "scoped"
+          }
+        });
+        // #endregion
+      }
+    } catch (error) {
+      // #region agent log
+      debugLog({
+        runId,
+        hypothesisId: "H4",
+        location: "scripts/ai-memory-cli.mjs:runDoctor:endpoint-probe-error",
+        message: "MCP endpoint probe failed",
+        data: {
+          endpoint: configUrl,
+          errorMessage: String(error?.message || error)
+        }
+      });
+      // #endregion
     }
   }
 
@@ -447,10 +694,29 @@ function runDoctor() {
   process.exitCode = 1;
 }
 
+function debugLog({ runId, hypothesisId, location, message, data }) {
+  fetch("http://127.0.0.1:7331/ingest/0f7b4832-031b-423c-aeca-769ceeaa022a", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "2d2875"
+    },
+    body: JSON.stringify({
+      sessionId: "2d2875",
+      runId,
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+}
+
 function printInstallSummary(agentId, clientId, target, restartMessage) {
   console.log(`Using config: ${paths.configPath}`);
   console.log(`Using secret: ${paths.envPath}`);
-  console.log(`Using agent '${agentId}'.`);
+  console.log(`Using install key '${agentId}'.`);
   if (clientId) {
     console.log(`Scoped client ID: '${clientId}'.`);
   }
@@ -462,7 +728,11 @@ function printHelp() {
   console.log(`Usage:
   node scripts/ai-memory-cli.mjs init
   node scripts/ai-memory-cli.mjs install <codex|claude|cursor|openclaw>
-  node scripts/ai-memory-cli.mjs doctor`);
+  node scripts/ai-memory-cli.mjs doctor
+
+Notes:
+  - "install key" is the write identity used across hosts
+  - install commands use the current install key from config`);
 }
 
 async function ask(label, fallback = "") {
