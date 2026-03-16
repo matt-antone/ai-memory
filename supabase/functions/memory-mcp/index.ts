@@ -199,7 +199,13 @@ Deno.serve(async (request: Request) => {
     });
     const server = createMemoryServer(requestContext);
     await server.connect(transport);
-    return await transport.handleRequest(request, { parsedBody });
+    const transportResponse = await transport.handleRequest(request, { parsedBody });
+    for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+      if (key !== "content-type") {
+        transportResponse.headers.set(key, value);
+      }
+    }
+    return transportResponse;
   } catch (error) {
     const normalized = normalizeError(error, requestId);
     logRequest("error", {
@@ -213,12 +219,18 @@ Deno.serve(async (request: Request) => {
   }
 });
 
+const SECURITY_HEADERS: Record<string, string> = {
+  "content-type": "application/json",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "strict-transport-security": "max-age=63072000; includeSubDomains",
+  "cache-control": "no-store"
+};
+
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: {
-      "content-type": "application/json"
-    }
+    headers: { ...SECURITY_HEADERS }
   });
 }
 

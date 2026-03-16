@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { timingSafeCompare } from "../utils/crypto.js";
 
 const MAX_CONTENT_LENGTH = 100_000;
 const MAX_SUMMARY_LENGTH = 10_000;
@@ -120,7 +121,7 @@ export function hasValidAccessKey(request, expectedAccessKey) {
   }
 
   const providedHeader = request.headers.get("x-memory-key");
-  if (providedHeader && providedHeader === expectedAccessKey) {
+  if (providedHeader && timingSafeCompare(providedHeader, expectedAccessKey)) {
     return true;
   }
 
@@ -130,7 +131,7 @@ export function hasValidAccessKey(request, expectedAccessKey) {
   }
 
   const [scheme, token] = authorization.split(/\s+/, 2);
-  return scheme?.toLowerCase() === "bearer" && token === expectedAccessKey;
+  return scheme?.toLowerCase() === "bearer" && timingSafeCompare(token ?? "", expectedAccessKey);
 }
 
 export const MCP_SECURITY_LIMITS = {

@@ -1,4 +1,5 @@
 import { createId } from "../utils/id.js";
+import { timingSafeCompare } from "../utils/crypto.js";
 import { normalizeNamespace } from "./validation.js";
 import { authError } from "./runtime-errors.js";
 
@@ -6,19 +7,19 @@ const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 120;
 
 export function loadRuntimePolicy(env) {
-  const adminSecrets = new Set();
+  const adminSecrets = [];
   const legacySecret = readEnv(env, "MEMORY_MCP_ACCESS_KEY");
   const accessKeys = readEnv(env, "MEMORY_MCP_ACCESS_KEYS");
 
   if (legacySecret?.trim()) {
-    adminSecrets.add(legacySecret.trim());
+    adminSecrets.push(legacySecret.trim());
   }
 
   if (accessKeys?.trim()) {
     for (const value of accessKeys.split(",")) {
       const trimmed = value.trim();
-      if (trimmed) {
-        adminSecrets.add(trimmed);
+      if (trimmed && !adminSecrets.includes(trimmed)) {
+        adminSecrets.push(trimmed);
       }
     }
   }
@@ -49,7 +50,7 @@ export function loadRuntimePolicy(env) {
     }
   }
 
-  if (adminSecrets.size === 0 && clients.size === 0) {
+  if (adminSecrets.length === 0 && clients.size === 0) {
     throw new Error("At least one admin access key or client credential must be configured");
   }
 
@@ -68,7 +69,7 @@ export function sanitizeRuntimePolicy(policy, env) {
     service: "supabase-mcp-memory",
     version: "0.1.0",
     project_ref: safeProjectRef(readEnv(env, "SUPABASE_URL")),
-    admin_key_count: policy.adminSecrets.size,
+    admin_key_count: policy.adminSecrets.length,
     client_count: policy.clients.size,
     rate_limit: policy.rateLimit
   };
@@ -86,7 +87,7 @@ export function authenticateRequest(request, policy) {
 
   if (providedClientId) {
     const client = policy.clients.get(providedClientId);
-    if (!client || client.disabled || client.secret !== providedKey) {
+    if (!client || client.disabled || !timingSafeCompare(client.secret, providedKey)) {
       throw authError("Invalid client credentials", { request_id: requestId, client_id: providedClientId });
     }
     return {
@@ -98,7 +99,7 @@ export function authenticateRequest(request, policy) {
     };
   }
 
-  if (policy.adminSecrets.has(providedKey)) {
+  if (policy.adminSecrets.some(s => timingSafeCompare(s, providedKey))) {
     return {
       requestId,
       clientId: "admin",
@@ -110,7 +111,7 @@ export function authenticateRequest(request, policy) {
 
   if (policy.clients.size === 1) {
     const [client] = policy.clients.values();
-    if (!client.disabled && client.secret === providedKey) {
+    if (!client.disabled && timingSafeCompare(client.secret, providedKey)) {
       return {
         requestId,
         clientId: client.clientId,
@@ -183,6 +184,14 @@ export function assertNamespaceAccess(itemNamespace, caller) {
   }
 }
 
+/**
+ * In-memory sliding-window rate limiter.
+ *
+ * Limitation: state is local to a single Deno isolate and resets on cold start.
+ * At higher scale, replace with a distributed store (e.g., Upstash Redis via
+ * REST API) keyed by client ID / IP. The interface (consume(key)) is designed
+ * to be swappable.
+ */
 export class InMemoryRateLimiter {
   constructor({ windowMs, maxRequests }) {
     this.windowMs = windowMs;
@@ -214,18 +223,20 @@ export function getRequestId(request) {
 }
 
 export function getRequestRateLimitKey(request) {
+  // Prefer platform-set headers (not spoofable by clients).
+  const platformIp = request.headers.get("cf-connecting-ip")
+    ?? request.headers.get("x-real-ip");
+  if (platformIp?.trim()) {
+    return `ip:${platformIp.trim()}`;
+  }
+
+  // Fall back to x-forwarded-for (first entry, may be spoofed in some configs).
   const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) {
     const [first] = forwardedFor.split(",", 1);
     if (first?.trim()) {
       return `ip:${first.trim()}`;
     }
-  }
-
-  const directIp = request.headers.get("cf-connecting-ip")
-    ?? request.headers.get("x-real-ip");
-  if (directIp?.trim()) {
-    return `ip:${directIp.trim()}`;
   }
 
   const userAgent = request.headers.get("user-agent")?.trim() || "unknown-agent";
