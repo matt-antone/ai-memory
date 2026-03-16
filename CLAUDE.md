@@ -32,11 +32,18 @@ CI runs `npm ci && npm test` on Node 20 (`.github/workflows/ci.yml`).
 - `tool-definitions.js` — MCP tool definitions (names, descriptions, input shapes).
 - `mcp-format.js` — Helpers to format service results as MCP tool responses.
 
+**Utilities** (`src/utils/`):
+- `id.js` — ID generation for items, embeddings, edges, and events.
+- `prompt.js` — Prompt-building helpers.
+- `agent-config.js` — Agent host configuration management.
+- `user-config.js` — User-level config persistence (`~/.ai-config/ai-memory/`).
+- `crypto.js` — Cryptographic helpers.
+
 **Storage adapters** (`src/storage/`):
 - `in-memory-store.js` — In-memory adapter for tests.
 - `supabase-rest-store.js` — Supabase REST/RPC adapter for production.
 
-Both implement the same interface: `createItem`, `getItem`, `updateItem`, `searchCandidates`, `createEdge`, `expandEdges`, `createEmbedding`, `createEvent`, `listRecent`.
+Both implement the same interface: `createItem`, `getItem`, `updateItem`, `archiveItem`, `searchCandidates`, `createEdge`, `expandEdges`, `createEmbedding`, `createEvent`, `listRecent`. `SupabaseRestStore` also exposes `healthCheck` (used by `/readyz`).
 
 **Edge function** (`supabase/functions/memory-mcp/index.ts`):
 - Deno-based Supabase Edge Function. Uses `@modelcontextprotocol/sdk` for MCP transport.
@@ -44,7 +51,7 @@ Both implement the same interface: `createItem`, `getItem`, `updateItem`, `searc
 - Exposes `/healthz` and `/readyz` health endpoints.
 
 **Database** (`supabase/migrations/`):
-- Three migrations: `0001_memory.sql` (core schema + pgvector + full-text search RPCs), `0002_search_or_lexical.sql`, `0003_metadata_search_enrichment.sql`.
+- Five migrations: `0001_memory.sql` (core schema + pgvector + full-text search RPCs), `0002_search_or_lexical.sql`, `0003_metadata_search_enrichment.sql`, `0004_service_role_policies.sql`, `0005_force_rls_memory_tables.sql`.
 - Key tables: `memory_items`, `memory_embeddings`, `memory_edges`, `memory_namespaces`, `memory_events`.
 - Key RPCs: `memory_search(...)`, `memory_expand_context(...)`.
 

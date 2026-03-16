@@ -423,7 +423,7 @@ If search returns too little:
 
 ## Related docs
 
-- [README.md](/Users/matthewantone/CurrentDevProjects/AI/ai-memory/README.md)
+- [README.md](../README.md)
 - [DEPLOYMENT.md](DEPLOYMENT.md)
 - [RELEASE.md](RELEASE.md)
-- [AGENTS.md](/Users/matthewantone/CurrentDevProjects/AI/ai-memory/AGENTS.md)
+- [AGENTS.md](../AGENTS.md)

@@ -62,7 +62,7 @@ Recommended default for this repo:
 ```json
 {
   "scope": "workspace",
-  "workspace_id": "ai-memory",
+  "workspace_id": "/Users/matthewantone/CurrentDevProjects/AI/ai-memory",
   "topic": null,
   "agent_id": null,
   "tags": []
@@ -154,7 +154,7 @@ Task start:
     "query": "ai-memory repository overview",
     "namespace": {
       "scope": "workspace",
-      "workspace_id": "ai-memory"
+      "workspace_id": "/Users/matthewantone/CurrentDevProjects/AI/ai-memory"
     }
   }
 }
@@ -171,7 +171,7 @@ Stable fact or decision:
     "summary": "Implemented MCP memory tool surface",
     "namespace": {
       "scope": "workspace",
-      "workspace_id": "ai-memory",
+      "workspace_id": "/Users/matthewantone/CurrentDevProjects/AI/ai-memory",
       "topic": "mcp"
     },
     "tags": ["tools", "mcp"],
@@ -191,7 +191,7 @@ Task-end summary:
     "summary": "Created ai-memory repo skill",
     "namespace": {
       "scope": "workspace",
-      "workspace_id": "ai-memory",
+      "workspace_id": "/Users/matthewantone/CurrentDevProjects/AI/ai-memory",
       "topic": "skill"
     },
     "tags": ["skill", "memory"],

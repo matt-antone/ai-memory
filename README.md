@@ -62,10 +62,10 @@ npm run ai-memory -- doctor
 - `src/core/tool-definitions.js`: MCP tool definitions
 - `src/storage/in-memory-store.js`: test adapter
 - `src/storage/supabase-rest-store.js`: Supabase REST/RPC storage adapter
-- `supabase/migrations/0001_memory.sql`: initial schema and SQL functions
+- `supabase/migrations/`: database migrations (`0001` through `0005`)
 - `supabase/baseline/initial_install.sql`: clean schema-only first-install baseline with RLS already enabled
 - `supabase/functions/memory-mcp/index.ts`: MCP-compatible edge function
-- `tests/memory-service.test.js`: executable behavior tests
+- `tests/`: executable behavior and unit tests (memory service, MCP security, runtime auth, config, and more)
 
 ## Implemented MCP tools
 
