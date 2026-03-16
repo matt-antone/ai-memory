@@ -178,6 +178,10 @@ try {
     }
   }
 
+  if (await confirm("Install `ai-memory` CLI globally? (works from any terminal, survives project deletion)", true)) {
+    run("node", [path.join(cwd, "scripts/ai-memory-cli.mjs"), "self-install"]);
+  }
+
   if (await confirm("Run the MCP smoke test now?", true)) {
     const smokeResult = run("npm", ["run", "smoke:mcp"], {
       env: {

@@ -76,9 +76,41 @@ async function main() {
     return 0;
   }
 
+  if (command === "self-install") {
+    await runSelfInstall();
+    return 0;
+  }
+
   if (command === "doctor") {
     await runDoctor();
     return process.exitCode ?? 0;
+  }
+
+  if (command === "status") {
+    await runStatus();
+    return 0;
+  }
+
+  if (command === "install-all") {
+    const hosts = args[1] ? args.slice(1) : ["codex", "cursor", "openclaw"];
+    for (const h of hosts) {
+      if (!["codex", "claude", "cursor", "openclaw"].includes(h)) {
+        throw new Error(`Unknown host: ${h}. Must be one of: codex, claude, cursor, openclaw`);
+      }
+    }
+    for (const h of hosts) {
+      console.log(`\n--- Installing ${h} ---`);
+      await runInstall(h);
+    }
+    return 0;
+  }
+
+  if (command === "uninstall") {
+    if (!["codex", "claude", "cursor", "openclaw"].includes(host)) {
+      throw new Error("Uninstall target must be one of: codex, claude, cursor, openclaw");
+    }
+    await runUninstall(host);
+    return 0;
   }
 
   throw new Error(`Unknown command: ${command}`);
@@ -406,6 +438,195 @@ function resolveJsonHostServerName(serverName, hostId) {
   return baseName.replace(/[^A-Za-z0-9_]/g, "_");
 }
 
+async function runSelfInstall() {
+  const projectRoot = path.resolve(new URL(".", import.meta.url).pathname, "..");
+  const pkgPath = path.join(projectRoot, "package.json");
+  if (!fs.existsSync(pkgPath)) {
+    throw new Error(`Cannot find package.json at ${pkgPath}`);
+  }
+
+  console.log("Installing ai-memory CLI globally...");
+  const result = spawnSync("npm", ["install", "-g", projectRoot], {
+    stdio: "inherit",
+    cwd: projectRoot
+  });
+  if (result.status !== 0) {
+    throw new Error("Global install failed. You may need to run with sudo or fix npm permissions.");
+  }
+
+  // Verify the binary is on PATH
+  const verifyResult = spawnSync("ai-memory", ["--help"], { encoding: "utf8", stdio: "pipe" });
+  if (verifyResult.status === 0) {
+    console.log("\nai-memory CLI installed globally. Available from any terminal.");
+  } else {
+    console.warn("\nInstall completed but 'ai-memory' not found on PATH.");
+    console.warn("You may need to restart your shell or check your npm global bin directory.");
+  }
+}
+
+async function runStatus() {
+  const config = readUserConfig(paths.configPath);
+  const envValues = readEnvFile(paths.envPath);
+  const current = getCurrentAgent(config);
+  const installKeys = listAgentIds(config);
+
+  console.log(`Endpoint:       ${config.url || "(not set)"}`);
+  console.log(`Install key:    ${current?.agentId || "(none)"}`);
+  console.log(`Auth mode:      ${current?.authMode || "(unknown)"}`);
+  if (current?.authMode === "scoped") {
+    console.log(`Client ID:      ${current.clientId || "(not set)"}`);
+  }
+  console.log(`Access key:     ${envValues.MEMORY_MCP_ACCESS_KEY ? "(set)" : "(missing)"}`);
+  console.log(`Installs:       ${installKeys.length > 0 ? installKeys.join(", ") : "(none)"}`);
+  console.log("");
+
+  const hosts = [
+    { id: "codex", label: "Codex", check: checkCodexInstalled },
+    { id: "claude", label: "Claude", check: checkClaudeInstalled },
+    { id: "cursor", label: "Cursor", check: checkCursorInstalled },
+    { id: "openclaw", label: "OpenClaw", check: checkOpenClawInstalled }
+  ];
+
+  console.log("Host status:");
+  for (const h of hosts) {
+    const installed = h.check(config, current?.agentId);
+    console.log(`  ${h.label.padEnd(12)} ${installed ? "installed" : "not installed"}`);
+  }
+}
+
+function checkCodexInstalled(config, agentId) {
+  const localPath = path.join(cwd, ".codex", "config.toml");
+  const globalPath = path.join(os.homedir(), ".codex", "config.toml");
+  for (const p of [localPath, globalPath]) {
+    if (fs.existsSync(p)) {
+      const content = fs.readFileSync(p, "utf8");
+      const inspect = inspectCodexConfig(content, config.serverName);
+      if (inspect.exists) return true;
+    }
+  }
+  return false;
+}
+
+function checkClaudeInstalled(_config, _agentId) {
+  if (!commandExists("claude")) return false;
+  const result = spawnSync("claude", ["mcp", "list"], { encoding: "utf8" });
+  return result.status === 0 && /ai.memory/i.test(result.stdout);
+}
+
+function checkCursorInstalled(config, agentId) {
+  const serverName = resolveJsonHostServerName(getAgentServerName(config, agentId || "cursor"), "cursor");
+  const localPath = path.join(cwd, ".cursor", "mcp.json");
+  const globalPath = path.join(os.homedir(), ".cursor", "mcp.json");
+  for (const p of [localPath, globalPath]) {
+    if (fs.existsSync(p)) {
+      const inspect = inspectJsonServerConfig(fs.readFileSync(p, "utf8"), serverName);
+      if (inspect.exists) return true;
+    }
+  }
+  return false;
+}
+
+function checkOpenClawInstalled(config, agentId) {
+  const serverName = resolveJsonHostServerName(getAgentServerName(config, agentId || "openclaw"), "openclaw");
+  const localPath = path.join(cwd, ".openclaw", "openclaw.json");
+  const globalPath = path.join(os.homedir(), ".openclaw", "openclaw.json");
+  for (const p of [localPath, globalPath]) {
+    if (fs.existsSync(p)) {
+      const inspect = inspectJsonServerConfig(fs.readFileSync(p, "utf8"), serverName);
+      if (inspect.exists) return true;
+    }
+  }
+  return false;
+}
+
+async function runUninstall(type) {
+  const config = readUserConfig(paths.configPath);
+  const current = getCurrentAgent(config);
+  const agentId = current?.agentId || "";
+
+  if (type === "codex") {
+    const localPath = path.join(cwd, ".codex", "config.toml");
+    const globalPath = path.join(os.homedir(), ".codex", "config.toml");
+    let removed = false;
+    for (const p of [localPath, globalPath]) {
+      if (fs.existsSync(p)) {
+        const content = fs.readFileSync(p, "utf8");
+        const inspect = inspectCodexConfig(content, config.serverName);
+        if (inspect.exists) {
+          const yes = await confirm(`Remove ai-memory from ${p}?`, true);
+          if (yes) {
+            // For Codex TOML, remove the managed block
+            const lines = content.split("\n");
+            const filtered = [];
+            let inBlock = false;
+            for (const line of lines) {
+              if (line.includes("[mcp_servers.") && line.includes(config.serverName || "ai-memory")) {
+                inBlock = true;
+                continue;
+              }
+              if (inBlock && line.startsWith("[")) {
+                inBlock = false;
+              }
+              if (!inBlock) {
+                filtered.push(line);
+              }
+            }
+            fs.writeFileSync(p, filtered.join("\n"));
+            console.log(`Removed from ${p}`);
+            removed = true;
+          }
+        }
+      }
+    }
+    if (!removed) console.log("No Codex ai-memory config found to remove.");
+    return;
+  }
+
+  if (type === "claude") {
+    if (!commandExists("claude")) {
+      throw new Error("Claude Code CLI ('claude') is not installed or not on PATH.");
+    }
+    const serverName = getAgentServerName(config, agentId);
+    for (const scope of ["project", "user", "local"]) {
+      const getResult = spawnSync("claude", ["mcp", "get", "--scope", scope, serverName], { encoding: "utf8" });
+      if (getResult.status === 0) {
+        const yes = await confirm(`Remove '${serverName}' from Claude scope '${scope}'?`, true);
+        if (yes) {
+          spawnSync("claude", ["mcp", "remove", "--scope", scope, serverName], { stdio: "inherit" });
+          console.log(`Removed '${serverName}' from Claude scope '${scope}'.`);
+        }
+      }
+    }
+    return;
+  }
+
+  // cursor or openclaw — JSON-based
+  const hostId = type;
+  const label = type === "cursor" ? "Cursor" : "OpenClaw";
+  const serverName = resolveJsonHostServerName(getAgentServerName(config, agentId || type), hostId);
+  const paths_ = hostId === "cursor"
+    ? [path.join(cwd, ".cursor", "mcp.json"), path.join(os.homedir(), ".cursor", "mcp.json")]
+    : [path.join(cwd, ".openclaw", "openclaw.json"), path.join(os.homedir(), ".openclaw", "openclaw.json")];
+
+  let removed = false;
+  for (const p of paths_) {
+    if (fs.existsSync(p)) {
+      const content = fs.readFileSync(p, "utf8");
+      const inspect = inspectJsonServerConfig(content, serverName);
+      if (inspect.exists) {
+        const yes = await confirm(`Remove ai-memory from ${p}?`, true);
+        if (yes) {
+          const nextContent = removeJsonServerConfig(content, serverName);
+          fs.writeFileSync(p, nextContent);
+          console.log(`Removed from ${p}`);
+          removed = true;
+        }
+      }
+    }
+  }
+  if (!removed) console.log(`No ${label} ai-memory config found to remove.`);
+}
+
 async function runDoctor() {
   const runId = `doctor-${Date.now()}`;
   // #region agent log
@@ -731,9 +952,13 @@ function printInstallSummary(agentId, clientId, target, restartMessage) {
 
 function printHelp() {
   console.log(`Usage:
-  node scripts/ai-memory-cli.mjs init
-  node scripts/ai-memory-cli.mjs install <codex|claude|cursor|openclaw>
-  node scripts/ai-memory-cli.mjs doctor
+  ai-memory self-install                           Install the CLI globally (survives project deletion)
+  ai-memory init                                   Initialize config and credentials
+  ai-memory install <codex|claude|cursor|openclaw>  Install MCP server for a host
+  ai-memory install-all [hosts...]                  Install for all hosts (default: codex cursor openclaw)
+  ai-memory uninstall <codex|claude|cursor|openclaw> Remove MCP server from a host
+  ai-memory status                                  Show config and host install status
+  ai-memory doctor                                  Validate config, env, and connectivity
 
 Notes:
   - "install key" is the write identity used across hosts

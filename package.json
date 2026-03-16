@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "ai-memory": "./scripts/ai-memory-cli.mjs"
+  },
   "scripts": {
     "ai-memory": "node scripts/ai-memory-cli.mjs",
     "onboard": "node scripts/onboard.mjs",
