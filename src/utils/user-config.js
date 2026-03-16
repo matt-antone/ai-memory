@@ -19,8 +19,8 @@ export function defaultUserConfig() {
   return {
     serverName: DEFAULT_SERVER_NAME,
     url: "https://your-project-ref.supabase.co/functions/v1/memory-mcp",
-    agents: {},
-    currentAgent: "",
+    installs: {},
+    currentInstallKey: "",
     createdAt: null,
     updatedAt: null
   };
@@ -29,14 +29,14 @@ export function defaultUserConfig() {
 export function normalizeUserConfig(input = {}) {
   const base = defaultUserConfig();
   const migrated = migrateLegacyShape(input);
-  const agents = normalizeAgents(migrated.agents);
-  const currentAgent = normalizeCurrentAgent(migrated.currentAgent, agents);
+  const installs = normalizeInstalls(migrated.installs);
+  const currentInstallKey = normalizeCurrentInstallKey(migrated.currentInstallKey, installs);
 
   return {
     serverName: String(migrated.serverName || base.serverName),
     url: String(migrated.url || base.url),
-    agents,
-    currentAgent,
+    installs,
+    currentInstallKey,
     createdAt: migrated.createdAt || null,
     updatedAt: migrated.updatedAt || null
   };
@@ -98,14 +98,14 @@ export function envFileMode(envPath) {
 }
 
 export function listAgentIds(config) {
-  return Object.keys(normalizeUserConfig(config).agents).sort();
+  return Object.keys(normalizeUserConfig(config).installs).sort();
 }
 
 export function upsertAgent(config, agentId, record = {}) {
   validateAgentId(agentId);
   const next = normalizeUserConfig(config);
-  const current = next.agents[agentId] ?? defaultAgentRecord();
-  next.agents[agentId] = normalizeAgent({
+  const current = next.installs[agentId] ?? defaultInstallRecord();
+  next.installs[agentId] = normalizeInstall({
     ...current,
     ...record
   });
@@ -114,8 +114,8 @@ export function upsertAgent(config, agentId, record = {}) {
 
 export function addAgentNamespace(config, agentId, namespace) {
   const next = normalizeUserConfig(config);
-  const current = next.agents[agentId] ?? defaultAgentRecord();
-  next.agents[agentId] = normalizeAgent({
+  const current = next.installs[agentId] ?? defaultInstallRecord();
+  next.installs[agentId] = normalizeInstall({
     ...current,
     namespaces: [...current.namespaces, namespace]
   });
@@ -124,17 +124,17 @@ export function addAgentNamespace(config, agentId, namespace) {
 
 export function setCurrentAgent(config, agentId) {
   const next = normalizeUserConfig(config);
-  next.currentAgent = normalizeCurrentAgent(agentId, next.agents);
+  next.currentInstallKey = normalizeCurrentInstallKey(agentId, next.installs);
   return next;
 }
 
 export function getCurrentAgent(config) {
   const normalized = normalizeUserConfig(config);
-  const agentId = normalized.currentAgent;
+  const agentId = normalized.currentInstallKey;
   if (!agentId) {
     return null;
   }
-  const agent = normalized.agents[agentId];
+  const agent = normalized.installs[agentId];
   if (!agent) {
     return null;
   }
@@ -144,20 +144,20 @@ export function getCurrentAgent(config) {
 export function getAgentServerName(config, agentId) {
   const normalized = normalizeUserConfig(config);
   const fallback = String(normalized.serverName || DEFAULT_SERVER_NAME);
-  const agent = normalized.agents[String(agentId || "").trim()];
+  const agent = normalized.installs[String(agentId || "").trim()];
   const override = String(agent?.serverName || "").trim();
   return override || fallback;
 }
 
 export function getAgentRecord(config, agentId) {
   const normalized = normalizeUserConfig(config);
-  const agent = normalized.agents[String(agentId || "").trim()];
+  const agent = normalized.installs[String(agentId || "").trim()];
   return agent ? { agentId: String(agentId || "").trim(), ...agent } : null;
 }
 
 export function listScopedAgents(config) {
   const normalized = normalizeUserConfig(config);
-  return Object.entries(normalized.agents)
+  return Object.entries(normalized.installs)
     .filter(([, agent]) => agent.authMode === "scoped")
     .map(([agentId, agent]) => ({ agentId, ...agent }))
     .sort((a, b) => a.agentId.localeCompare(b.agentId));
@@ -166,7 +166,7 @@ export function listScopedAgents(config) {
 export function listCompatibleAgentsForHost(config, hostId) {
   const normalizedHost = String(hostId || "").trim();
   const normalized = normalizeUserConfig(config);
-  return Object.entries(normalized.agents)
+  return Object.entries(normalized.installs)
     .filter(([agentId]) => agentId === normalizedHost)
     .map(([agentId, agent]) => ({ agentId, ...agent }));
 }
@@ -178,7 +178,7 @@ export function resolveHostAgent(config, hostId) {
     return { match: null, reason: "missing-host" };
   }
 
-  const direct = normalized.agents[targetHost];
+  const direct = normalized.installs[targetHost];
   if (direct) {
     return {
       match: { agentId: targetHost, ...direct },
@@ -186,14 +186,14 @@ export function resolveHostAgent(config, hostId) {
     };
   }
 
-  if (normalized.currentAgent === targetHost && normalized.agents[targetHost]) {
+  if (normalized.currentInstallKey === targetHost && normalized.installs[targetHost]) {
     return {
-      match: { agentId: targetHost, ...normalized.agents[targetHost] },
+      match: { agentId: targetHost, ...normalized.installs[targetHost] },
       reason: "current-agent"
     };
   }
 
-  const agents = Object.entries(normalized.agents)
+  const agents = Object.entries(normalized.installs)
     .map(([agentId, agent]) => ({ agentId, ...agent }));
   if (agents.length === 1) {
     return {
@@ -237,10 +237,11 @@ function migrateLegacyShape(input) {
     return { ...base };
   }
 
-  const hasLegacyShape = "clientId" in input || "installs" in input;
-  const hasIntermediateShape = "clients" in input || hasLegacyAgentShape(input.agents);
+  const hasLegacyShape = "clientId" in input || hasLegacyInstallShape(input.installs);
+  const hasIntermediateShape = "clients" in input || "agents" in input || "currentAgent" in input || hasLegacyAgentShape(input.agents);
+  const hasCurrentShape = "installs" in input || "currentInstallKey" in input;
 
-  if (!hasLegacyShape && !hasIntermediateShape) {
+  if (hasCurrentShape && !hasLegacyShape && !hasIntermediateShape) {
     return {
       ...base,
       ...input
@@ -261,15 +262,15 @@ function migrateLegacyShape(input) {
 
 function migrateFromLegacyConfig(input) {
   const legacyClientId = String(input.clientId || "").trim();
-  const installs = isPlainObject(input.installs) ? input.installs : {};
-  const agents = {};
+  const sourceInstalls = isPlainObject(input.installs) ? input.installs : {};
+  const installs = {};
 
-  for (const [installKey, record] of Object.entries(installs)) {
+  for (const [installKey, record] of Object.entries(sourceInstalls)) {
     const inferredHost = inferAgentKey(record, installKey);
     if (!inferredHost) {
       continue;
     }
-    agents[inferredHost] = normalizeAgent({
+    installs[inferredHost] = normalizeInstall({
       authMode: legacyClientId ? "scoped" : "shared",
       clientId: legacyClientId,
       namespaces: []
@@ -279,8 +280,8 @@ function migrateFromLegacyConfig(input) {
   return {
     serverName: input.serverName,
     url: input.url,
-    agents,
-    currentAgent: normalizeCurrentAgent(input.currentAgent, agents),
+    installs,
+    currentInstallKey: normalizeCurrentInstallKey(input.currentInstallKey || input.currentAgent, installs),
     createdAt: input.createdAt || null,
     updatedAt: input.updatedAt || null
   };
@@ -288,15 +289,20 @@ function migrateFromLegacyConfig(input) {
 
 function migrateFromIntermediateConfig(input) {
   const clients = isPlainObject(input.clients) ? input.clients : {};
+  const inputInstalls = isPlainObject(input.installs) ? input.installs : {};
   const inputAgents = isPlainObject(input.agents) ? input.agents : {};
+  const combinedInstalls = {
+    ...inputInstalls,
+    ...inputAgents
+  };
   const scopedClientIds = Object.entries(clients)
     .filter(([, value]) => normalizeAuthMode(value?.authMode ?? "scoped") === "scoped")
     .map(([clientId]) => String(clientId || "").trim())
     .filter(Boolean);
   const fallbackScopedClientId = scopedClientIds.length === 1 ? scopedClientIds[0] : "";
 
-  const agents = {};
-  for (const [rawAgentId, value] of Object.entries(inputAgents)) {
+  const installs = {};
+  for (const [rawAgentId, value] of Object.entries(combinedInstalls)) {
     const inferredAgentId = inferAgentKey(value, rawAgentId);
     if (!inferredAgentId) {
       continue;
@@ -310,7 +316,7 @@ function migrateFromIntermediateConfig(input) {
       ? (rawClientId || fallbackScopedClientId)
       : "";
 
-    agents[inferredAgentId] = normalizeAgent({
+    installs[inferredAgentId] = normalizeInstall({
       authMode: clientAuthMode,
       clientId,
       namespaces: Array.isArray(value?.namespaces) ? value.namespaces : []
@@ -320,14 +326,14 @@ function migrateFromIntermediateConfig(input) {
   return {
     serverName: input.serverName,
     url: input.url,
-    agents,
-    currentAgent: normalizeCurrentAgent(mapLegacyCurrentAgent(input.currentAgent, inputAgents, agents), agents),
+    installs,
+    currentInstallKey: normalizeCurrentInstallKey(mapLegacyCurrentAgent(input.currentInstallKey || input.currentAgent, combinedInstalls, installs), installs),
     createdAt: input.createdAt || null,
     updatedAt: input.updatedAt || null
   };
 }
 
-function normalizeAgents(input) {
+function normalizeInstalls(input) {
   if (!isPlainObject(input)) {
     return {};
   }
@@ -337,7 +343,7 @@ function normalizeAgents(input) {
     if (!String(agentId || "").trim()) {
       continue;
     }
-    const normalized = normalizeAgent(value);
+    const normalized = normalizeInstall(value);
     try {
       validateAgentRecord(agentId, normalized);
       next[agentId] = normalized;
@@ -348,7 +354,7 @@ function normalizeAgents(input) {
   return next;
 }
 
-function defaultAgentRecord() {
+function defaultInstallRecord() {
   return {
     authMode: "scoped",
     clientId: "",
@@ -357,7 +363,7 @@ function defaultAgentRecord() {
   };
 }
 
-function normalizeAgent(input = {}) {
+function normalizeInstall(input = {}) {
   const authMode = normalizeAuthMode(input.authMode ?? "scoped");
   const clientId = authMode === "scoped"
     ? String(input.clientId || "").trim()
@@ -370,7 +376,7 @@ function normalizeAgent(input = {}) {
   };
 }
 
-function normalizeCurrentAgent(currentAgent, agents) {
+function normalizeCurrentInstallKey(currentAgent, agents) {
   const normalized = String(currentAgent || "").trim();
   if (normalized && agents[normalized]) {
     return normalized;
@@ -452,6 +458,19 @@ function hasLegacyAgentShape(agents) {
   ));
 }
 
+function hasLegacyInstallShape(installs) {
+  if (!isPlainObject(installs)) {
+    return false;
+  }
+  return Object.values(installs).some((value) => isPlainObject(value) && (
+    "type" in value
+    || "host" in value
+    || "agentHost" in value
+    || "agentId" in value
+    || "scope" in value
+  ));
+}
+
 function backupLegacyConfigIfNeeded(configPath) {
   if (!fs.existsSync(configPath)) {
     return;
@@ -466,7 +485,7 @@ function backupLegacyConfigIfNeeded(configPath) {
   }
 
   const isLegacy = isPlainObject(parsed)
-    && ("clientId" in parsed || "installs" in parsed || "clients" in parsed);
+    && ("clientId" in parsed || "clients" in parsed || "agents" in parsed || "currentAgent" in parsed);
   if (!isLegacy) {
     return;
   }
