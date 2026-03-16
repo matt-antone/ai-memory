@@ -71,7 +71,7 @@ If you want one guided flow instead of following the individual steps manually, 
 npm run onboard
 ```
 
-The onboarding CLI walks through project linking, migration push, secret setup, edge-function deploy, agent registration, and an optional smoke test.
+The onboarding CLI walks through project linking, migration push, secret setup, edge-function deploy, install-key registration, and an optional smoke test.
 
 If you later run the uninstall helper, it will detect installed `ai-memory` registrations for Codex, Claude, Cursor, and OpenClaw across project-local and global scopes, then ask which single target you want to remove:
 
@@ -87,8 +87,8 @@ For real agents, prefer scoped clients over a shared admin key.
 
 Why:
 
-- each agent gets its own secret
-- each agent can be locked to a namespace
+- each install key gets its own secret
+- each install key can be locked to a namespace
 - server-side namespace enforcement reduces accidental cross-project recall
 
 Example `MEMORY_MCP_CLIENTS_JSON` entry:
@@ -122,7 +122,7 @@ This repo also includes a helper script:
 npm run setup:codex
 ```
 
-The script resolves the current agent from `~/.ai-config/ai-memory/config.json`, then prompts for either a project-local install at `.codex/config.toml` or a global install at `~/.codex/config.toml`.
+The script resolves the current install key from `~/.ai-config/ai-memory/config.json`, then prompts for either a project-local install at `.codex/config.toml` or a global install at `~/.codex/config.toml`.
 If an `ai-memory` entry already exists, it warns and asks whether to merge or overwrite before changing anything.
 
 ```toml
@@ -145,7 +145,7 @@ Important:
 - if the host is already running, fully restart it after config changes
 - the edge function fails closed if credentials are missing or blank
 
-If you use a scoped client, the setup flow writes that client ID into the generated host config for the current agent. Do not set a machine-global `MEMORY_MCP_CLIENT_ID` when multiple agents or repos share the same computer.
+If you use a scoped client, the setup flow writes that client ID into the generated host config for the current install key. Do not set a machine-global `MEMORY_MCP_CLIENT_ID` when multiple installs or repos share the same computer.
 
 ## Quickstart: Claude Code
 
@@ -157,7 +157,7 @@ This repo also includes a helper script:
 npm run setup:claude
 ```
 
-The script resolves the current agent from `~/.ai-config/ai-memory/config.json`, then prompts for `project`, `user`, or `local` Claude scope before registering the server.
+The script resolves the current install key from `~/.ai-config/ai-memory/config.json`, then prompts for `project`, `user`, or `local` Claude scope before registering the server.
 If an `ai-memory` entry already exists in that scope, it warns before replacing it.
 
 You can override the endpoint or scope when needed:
@@ -250,13 +250,14 @@ The script prompts for either a project-local install at `.cursor/mcp.json` or a
 If an `ai-memory` entry already exists, it warns and asks whether to merge or overwrite before changing anything.
 If you use scoped client auth, set `MEMORY_MCP_CLIENT_ID` before running the script. The setup helper writes it into the generated MCP config for that install rather than expecting a machine-global env var.
 For project-local installs, the generated config points Cursor at `${workspaceFolder}/.env` so repo-scoped secrets are available to MCP header interpolation.
+Important: Cursor MCP server keys must use only alphanumeric characters and underscores. Use `ai_memory` (not `ai-memory`) as the key inside `mcpServers`.
 
 Example resulting config:
 
 ```json
 {
   "mcpServers": {
-    "ai-memory": {
+    "ai_memory": {
       "type": "http",
       "url": "https://<project-ref>.supabase.co/functions/v1/memory-mcp",
       "headers": {
@@ -272,7 +273,7 @@ And with a scoped client:
 ```json
 {
   "mcpServers": {
-    "ai-memory": {
+    "ai_memory": {
       "type": "http",
       "url": "https://<project-ref>.supabase.co/functions/v1/memory-mcp",
       "headers": {
@@ -292,7 +293,7 @@ After writing the file:
 
 ## Quickstart: OpenClaw
 
-This repo now includes an OpenClaw setup helper that writes an `ai-memory` MCP entry into either a project-local or global OpenClaw config.
+This repo now includes an OpenClaw setup helper that writes an `ai_memory` MCP entry into either a project-local or global OpenClaw config.
 
 ```bash
 npm run setup:openclaw
@@ -305,6 +306,7 @@ The script prompts for either:
 
 If you choose project-local, OpenClaw must be launched with `OPENCLAW_CONFIG_PATH` pointing at that file so it becomes the active config for the repo.
 If an `ai-memory` entry already exists, the script warns and asks whether to merge or overwrite before changing anything.
+Use `ai_memory` as the MCP server key for OpenClaw JSON config as well (alphanumeric/underscore only).
 
 ## How to scope memory safely
 

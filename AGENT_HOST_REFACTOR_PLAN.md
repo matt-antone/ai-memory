@@ -1,5 +1,7 @@
 # Agent-Host-Centric `ai-memory` Refactor
 
+> Historical note: this document describes an earlier setup direction. The current v1 onboarding/install UX uses a single install-key identity across hosts (no separate host-specific identity prompt).
+
 ## Summary
 
 Refactor the local `ai-memory` configuration so `~/.ai-config/ai-memory/config.json` is the single source of truth and the first-class managed objects are host agents:

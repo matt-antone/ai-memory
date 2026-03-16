@@ -26,6 +26,7 @@ Use `ai-memory` as the persistent memory and recall system for work in this repo
 - Read relevant hits instead of relying only on titles or summaries.
 - Persist only meaningful, reusable information, not incidental progress chatter.
 - Use `namespace` consistently when the task is tied to a specific workspace, agent, or topic.
+- When discussing setup/config in this repo, use **install key** terminology (single identity used across hosts) instead of introducing a separate host-specific agent identity.
 - For this repository, prefer `namespace: { scope: "workspace", workspace_id: "/Users/matthewantone/CurrentDevProjects/AI/ai-memory", topic?: <task-topic> }` for repo-specific memories instead of leaving `workspace_id` null.
 - If `ai-memory` is unavailable, say so briefly and continue the main task when possible.
 

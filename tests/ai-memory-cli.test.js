@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const cliPath = path.join(repoRoot, "scripts", "ai-memory-cli.mjs");
 
-test("cli init creates centralized config and env with agent-centric shape", () => {
+test("cli init creates centralized config and env with install-centric shape", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-cli-init-"));
   const configDir = path.join(tempDir, "config");
   const result = runCli(["init"], {
@@ -18,7 +18,7 @@ test("cli init creates centralized config and env with agent-centric shape", () 
       AI_MEMORY_INIT_URL: "https://example.test/memory",
       AI_MEMORY_INIT_ACCESS_KEY: "secret-123",
       AI_MEMORY_INIT_CLIENT_ID: "client-a",
-      AI_MEMORY_INIT_AGENT_ID: "claude"
+      AI_MEMORY_INIT_INSTALL_KEY: "claude"
     }
   });
 
@@ -27,8 +27,8 @@ test("cli init creates centralized config and env with agent-centric shape", () 
   const envFile = fs.readFileSync(path.join(configDir, "env"), "utf8");
 
   assert.equal(config.url, "https://example.test/memory");
-  assert.equal(config.currentAgent, "claude");
-  assert.deepEqual(config.agents.claude, {
+  assert.equal(config.currentInstallKey, "claude");
+  assert.deepEqual(config.installs.claude, {
     authMode: "scoped",
     clientId: "client-a",
     serverName: "",
@@ -40,7 +40,7 @@ test("cli init creates centralized config and env with agent-centric shape", () 
   assert.match(envFile, /MEMORY_MCP_AGENT_SECRETS_JSON=/);
 });
 
-test("cli install codex prefers the codex agent and writes scoped headers", () => {
+test("cli install codex uses current install key identity and writes scoped headers", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-cli-codex-"));
   const configDir = path.join(tempDir, "config");
   const codexPath = path.join(tempDir, "project", ".codex", "config.toml");
@@ -48,21 +48,21 @@ test("cli install codex prefers the codex agent and writes scoped headers", () =
   seedConfig(configDir, {
     serverName: "ai-memory",
     url: "https://example.test/memory",
-    agents: {
-      codex: {
+    installs: {
+      "team-reviewer": {
         authMode: "scoped",
         clientId: "client-a",
         namespaces: []
       },
-      claude: {
+      "team-shared": {
         authMode: "shared",
         clientId: "",
         namespaces: []
       }
     },
-    currentAgent: "claude"
+    currentInstallKey: "team-reviewer"
   }, "secret-123", {
-    codex: { authMode: "scoped", clientId: "client-a", secret: "secret-123" }
+    "team-reviewer": { authMode: "scoped", clientId: "client-a", secret: "secret-123" }
   });
 
   const result = runCli(["install", "codex"], {
@@ -78,7 +78,7 @@ test("cli install codex prefers the codex agent and writes scoped headers", () =
   const updatedConfig = JSON.parse(fs.readFileSync(path.join(configDir, "config.json"), "utf8"));
   const codexConfig = fs.readFileSync(codexPath, "utf8");
 
-  assert.equal(updatedConfig.currentAgent, "codex");
+  assert.equal(updatedConfig.currentInstallKey, "team-reviewer");
   assert.match(codexConfig, /x-memory-key = "secret-123"/);
   assert.match(codexConfig, /x-memory-client-id = "client-a"/);
 });
@@ -141,7 +141,7 @@ exit 0
   seedConfig(configDir, {
     serverName: "ai-memory",
     url: "https://example.test/memory",
-    agents: {
+    installs: {
       claude: {
         authMode: "shared",
         clientId: "",
@@ -149,7 +149,7 @@ exit 0
         namespaces: []
       }
     },
-    currentAgent: "claude"
+    currentInstallKey: "claude"
   }, "secret-xyz", {
     claude: { authMode: "shared", clientId: "", secret: "secret-xyz" }
   });
@@ -169,9 +169,48 @@ exit 0
   const updatedConfig = JSON.parse(fs.readFileSync(path.join(configDir, "config.json"), "utf8"));
   const log = fs.readFileSync(logPath, "utf8");
 
-  assert.equal(updatedConfig.currentAgent, "claude");
+  assert.equal(updatedConfig.currentInstallKey, "claude");
   assert.match(log, /--header x-memory-key: secret-xyz/);
   assert.doesNotMatch(log, /x-memory-client-id/);
+});
+
+test("cli install cursor normalizes server key and writes literal auth header", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-cli-cursor-"));
+  const configDir = path.join(tempDir, "config");
+  const cursorPath = path.join(tempDir, ".cursor", "mcp.json");
+
+  seedConfig(configDir, {
+    serverName: "ai-memory",
+    url: "https://example.test/memory",
+    installs: {
+      cursor: {
+        authMode: "scoped",
+        clientId: "cursor-memory",
+        serverName: "",
+        namespaces: []
+      }
+    },
+    currentInstallKey: "cursor"
+  }, "secret-cursor", {
+    cursor: { authMode: "scoped", clientId: "cursor-memory", secret: "secret-cursor" }
+  });
+
+  const result = runCli(["install", "cursor"], {
+    cwd: tempDir,
+    env: {
+      AI_MEMORY_CONFIG_DIR: configDir,
+      AI_MEMORY_INSTALL_SCOPE: "global/user",
+      AI_MEMORY_CURSOR_CONFIG_PATH: cursorPath,
+      AI_MEMORY_OVERWRITE_EXISTING: "true"
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(fs.readFileSync(cursorPath, "utf8"));
+  assert.equal(Boolean(parsed.mcpServers.ai_memory), true);
+  assert.equal(Boolean(parsed.mcpServers["ai-memory"]), false);
+  assert.equal(parsed.mcpServers.ai_memory.headers["x-memory-key"], "secret-cursor");
+  assert.equal(parsed.mcpServers.ai_memory.headers["x-memory-client-id"], "cursor-memory");
 });
 
 test("cli install claude uses and persists a custom MCP server name", () => {
@@ -194,7 +233,7 @@ exit 0
   seedConfig(configDir, {
     serverName: "ai-memory",
     url: "https://example.test/memory",
-    agents: {
+    installs: {
       claude: {
         authMode: "shared",
         clientId: "",
@@ -202,7 +241,7 @@ exit 0
         namespaces: []
       }
     },
-    currentAgent: "claude"
+    currentInstallKey: "claude"
   }, "secret-xyz", {
     claude: { authMode: "shared", clientId: "", secret: "secret-xyz" }
   });
@@ -222,18 +261,18 @@ exit 0
   const updatedConfig = JSON.parse(fs.readFileSync(path.join(configDir, "config.json"), "utf8"));
   const log = fs.readFileSync(logPath, "utf8");
 
-  assert.equal(updatedConfig.agents.claude.serverName, "ai-memory-reviewer-a");
+  assert.equal(updatedConfig.installs.claude.serverName, "ai-memory-reviewer-a");
   assert.match(log, /mcp get --scope project ai-memory-reviewer-a/);
   assert.match(log, /mcp add --transport http --scope project ai-memory-reviewer-a https:\/\/example\.test\/memory/);
 });
 
-test("cli install fails clearly when requested host agent is absent", () => {
+test("cli install falls back to normalized install key when current is unset", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-cli-no-host-"));
   const configDir = path.join(tempDir, "config");
   seedConfig(configDir, {
     serverName: "ai-memory",
     url: "https://example.test/memory",
-    agents: {
+    installs: {
       "team-reviewer": {
         authMode: "scoped",
         clientId: "client-a",
@@ -245,7 +284,7 @@ test("cli install fails clearly when requested host agent is absent", () => {
         namespaces: []
       }
     },
-    currentAgent: "team-reviewer"
+    currentInstallKey: ""
   }, "secret-123", {
     "team-reviewer": { authMode: "scoped", clientId: "client-a", secret: "secret-123" }
   });
@@ -253,22 +292,25 @@ test("cli install fails clearly when requested host agent is absent", () => {
   const result = runCli(["install", "codex"], {
     cwd: tempDir,
     env: {
-      AI_MEMORY_CONFIG_DIR: configDir
+      AI_MEMORY_CONFIG_DIR: configDir,
+      AI_MEMORY_INSTALL_SCOPE: "global/user",
+      AI_MEMORY_CODEX_CONFIG_PATH: path.join(tempDir, "project", ".codex", "config.toml")
     }
   });
 
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /No 'codex' agent is configured/);
+  assert.equal(result.status, 0, result.stderr);
+  const updatedConfig = JSON.parse(fs.readFileSync(path.join(configDir, "config.json"), "utf8"));
+  assert.equal(updatedConfig.currentInstallKey, "team-reviewer");
 });
 
-test("doctor reports missing currentAgent, invalid shared agent client ids, and missing scoped inventory", () => {
+test("doctor reports missing currentInstallKey, invalid shared install client ids, and missing scoped inventory", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-cli-doctor-"));
   const configDir = path.join(tempDir, "config");
   fs.mkdirSync(configDir, { recursive: true });
   fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({
     serverName: "ai-memory",
     url: "https://example.test/memory",
-    agents: {
+    installs: {
       claude: {
         authMode: "shared",
         clientId: "should-not-exist",
@@ -280,7 +322,7 @@ test("doctor reports missing currentAgent, invalid shared agent client ids, and 
         namespaces: []
       }
     },
-    currentAgent: ""
+    currentInstallKey: ""
   }, null, 2));
   fs.writeFileSync(path.join(configDir, "env"), 'MEMORY_MCP_ACCESS_KEY="secret"\n', { mode: 0o644 });
 
@@ -290,9 +332,9 @@ test("doctor reports missing currentAgent, invalid shared agent client ids, and 
   });
 
   assert.equal(result.status, 1);
-  assert.match(result.stdout, /missing 'currentAgent'/);
-  assert.match(result.stdout, /Shared agent 'claude' must not define a scoped client ID/);
-  assert.match(result.stdout, /Scoped agent 'codex' is missing a scoped client ID/);
+  assert.match(result.stdout, /missing 'currentInstallKey'/);
+  assert.match(result.stdout, /Shared install 'claude' must not define a scoped client ID/);
+  assert.match(result.stdout, /Scoped install 'codex' is missing a scoped client ID/);
   assert.match(result.stdout, /permissions should be 600/);
   assert.match(result.stdout, /MEMORY_MCP_AGENT_SECRETS_JSON/);
 });

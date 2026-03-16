@@ -137,6 +137,7 @@ Use to review recent activity in the current namespace.
 - You MUST search before guessing when prior context may exist and `memory.*` tools are available.
 - You MUST read relevant hits instead of relying only on titles or summaries.
 - You MUST use namespace consistently for repo-tied work.
+- For setup/config guidance in this repo, you SHOULD use install-key wording (single identity) instead of introducing separate host-specific agent IDs.
 - You MUST say so briefly and continue the main task when `ai-memory` is unavailable.
 - You SHOULD write only meaningful, reusable information.
 - You SHOULD link related memories when that relationship will help later retrieval.

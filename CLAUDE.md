@@ -51,6 +51,7 @@ Both implement the same interface: `createItem`, `getItem`, `updateItem`, `searc
 ## Key patterns
 
 - **Namespace scoping**: All operations use `normalizeNamespace()`. Scoped clients have server-enforced namespace restrictions.
+- **Install identity model**: Setup scripts use one install key as the identity across host registrations; do not assume a separate host-specific agent ID during onboarding/install flows.
 - **Embeddings are optional**: Items without embeddings fall back to lexical search automatically.
 - **Store adapter contract**: Any new storage backend must implement the adapter interface used by `InMemoryStore` and `SupabaseRestStore`.
 - **ESM only**: `"type": "module"` in package.json. All imports use `.js` extensions.
