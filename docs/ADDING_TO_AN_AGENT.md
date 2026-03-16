@@ -63,7 +63,7 @@ You need:
   - a shared admin key, or
   - scoped client credentials through `MEMORY_MCP_CLIENTS_JSON`
 
-If you have not deployed yet, follow [DEPLOYMENT.md](/Users/matthewantone/CurrentDevProjects/AI/ai-memory/DEPLOYMENT.md) first.
+If you have not deployed yet, follow [DEPLOYMENT.md](DEPLOYMENT.md) first.
 
 If you want one guided flow instead of following the individual steps manually, this repo also includes:
 
@@ -424,6 +424,6 @@ If search returns too little:
 ## Related docs
 
 - [README.md](/Users/matthewantone/CurrentDevProjects/AI/ai-memory/README.md)
-- [DEPLOYMENT.md](/Users/matthewantone/CurrentDevProjects/AI/ai-memory/DEPLOYMENT.md)
-- [RELEASE.md](/Users/matthewantone/CurrentDevProjects/AI/ai-memory/RELEASE.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [RELEASE.md](RELEASE.md)
 - [AGENTS.md](/Users/matthewantone/CurrentDevProjects/AI/ai-memory/AGENTS.md)

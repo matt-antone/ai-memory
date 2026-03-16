@@ -2,7 +2,7 @@
 
 Provider-agnostic memory and recall system inspired by OpenViking, built around a Supabase backend and an MCP-compatible edge surface.
 
-This repository now includes production-readiness hardening for small-team internal use:
+This repository provides a production-ready memory and recall service for small-team internal use:
 
 - Scoped client authentication with optional shared admin keys
 - Server-side namespace enforcement
@@ -11,7 +11,7 @@ This repository now includes production-readiness hardening for small-team inter
 - Transient upstream retry/backoff and lightweight in-memory rate limiting
 - Release, smoke-test, and CI conventions
 
-## Current status
+## What is included
 
 This repository includes:
 
@@ -21,7 +21,38 @@ This repository includes:
 - A Supabase SQL migration for tables, indexes, and search RPCs
 - A Supabase Edge Function that exposes MCP-style tools over JSON-RPC
 
-The remaining setup work is client registration and environment wiring in the MCP host you want to use, such as Codex, Claude Desktop, or another MCP-compatible agent.
+To use it from an MCP host such as Codex, Claude Desktop, or another compatible agent, you only need to register the deployed endpoint and provide credentials.
+
+## Quickstart
+
+Use this for the fastest path to verify the repo and connect an agent.
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Run the local test suite (no Supabase required):
+
+```bash
+npm test
+```
+
+3. Run the guided setup for Supabase and agent registration:
+
+```bash
+npm run onboard
+```
+
+4. Optional (manual alternative to step 3): initialize and install per-agent configuration:
+
+```bash
+npm run ai-memory -- init
+npm run ai-memory -- install codex
+npm run ai-memory -- install claude
+npm run ai-memory -- doctor
+```
 
 ## Repository layout
 
@@ -52,7 +83,7 @@ The remaining setup work is client registration and environment wiring in the MC
 
 - Memories are saved explicitly through `memory.write`
 - Each item stores content, kind, metadata, namespace, tags, importance, and provenance
-- Writes now auto-enrich retrieval hints by expanding tags, generating a fallback summary when absent, and storing derived search metadata under `metadata.retrieval`
+- Writes auto-enrich retrieval hints by expanding tags, generating a fallback summary when absent, and storing derived search metadata under `metadata.retrieval`
 - Callers may attach embeddings, but embeddings are optional
 
 ### Retrieval
@@ -60,7 +91,7 @@ The remaining setup work is client registration and environment wiring in the MC
 - Search supports `lexical`, `vector`, and `hybrid` modes
 - If no query embedding is provided, search falls back to lexical mode automatically
 - Ranking combines vector similarity, lexical match, recency, and importance
-- Lexical search now indexes selected metadata keys and values in addition to content, summary, and tags
+- Lexical search indexes selected metadata keys and values in addition to content, summary, and tags
 - Linked context can be expanded on demand through graph edges
 
 ### Document ingestion
@@ -104,7 +135,7 @@ The test suite uses the in-memory adapter, so it runs without Supabase.
 
 ## Agent integration
 
-If you want to attach this memory system to another agent or MCP host, see [ADDING_TO_AN_AGENT.md](/Users/matthewantone/CurrentDevProjects/AI/ai-memory/ADDING_TO_AN_AGENT.md).
+If you want to attach this memory system to another agent or MCP host, see [docs/ADDING_TO_AN_AGENT.md](docs/ADDING_TO_AN_AGENT.md).
 
 If you want a guided end-to-end setup flow for Supabase plus install-key registration, run `npm run onboard`.
 That guide now includes setup for both Codex and Claude Code, including a `claude mcp add --transport http ...` example for remote MCP registration.
@@ -235,7 +266,16 @@ The edge function rejects oversized or overly expensive MCP requests with schema
 - `GET /healthz` returns a lightweight process health response.
 - `GET /readyz` verifies the function can still reach Supabase.
 - `npm run smoke:mcp` runs a basic MCP lifecycle smoke test against a deployed edge endpoint.
-- `RELEASE.md` describes the release and rollback checklist.
+- `docs/RELEASE.md` describes the release and rollback checklist.
+
+## Documentation
+
+Most repository docs now live in [`docs/`](docs/).
+
+- [`docs/index.md`](docs/index.md): docs landing page for GitHub and GitHub Pages
+- [`docs/ADDING_TO_AN_AGENT.md`](docs/ADDING_TO_AN_AGENT.md): agent and host integration guide
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md): first deploy checklist
+- [`docs/RELEASE.md`](docs/RELEASE.md): release and rollback process
 
 ## Notes and constraints
 

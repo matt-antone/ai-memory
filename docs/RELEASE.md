@@ -3,7 +3,7 @@
 ## Versioning
 
 - Use semver tags such as `v0.1.0`.
-- Record user-visible changes in `CHANGELOG.md` before tagging.
+- Record user-visible changes in the release PR, tag notes, or GitHub release before tagging.
 
 ## Pre-release checklist
 
@@ -19,7 +19,7 @@
 2. Tag the commit with the release version.
 3. Deploy the SQL migrations to staging, then production.
 4. Deploy the edge function to staging, run smoke tests, then promote to production.
-5. Update `CHANGELOG.md` for the next unreleased cycle.
+5. Publish concise release notes in the tag, PR, or GitHub release entry.
 
 ## Rollback
 
