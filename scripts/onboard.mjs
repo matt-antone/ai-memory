@@ -5,6 +5,20 @@ import crypto from "node:crypto";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { spawnSync } from "node:child_process";
+import { resolveChoice } from "../src/utils/prompt.js";
+import {
+  BUILTIN_AGENT_IDS,
+  addAgentNamespace,
+  listAgentIds,
+  readEnvFile,
+  readUserConfig,
+  resolveAiMemoryPaths,
+  setCurrentAgent,
+  upsertAgent,
+  validateAgentId,
+  validateClientId,
+  writeUserConfig
+} from "../src/utils/user-config.js";
 
 const cwd = process.cwd();
 const defaultProjectRef = readText(path.join(cwd, "supabase/.temp/project-ref"))?.trim() || "";
@@ -12,6 +26,7 @@ const defaultEndpoint = defaultProjectRef
   ? `https://${defaultProjectRef}.supabase.co/functions/v1/memory-mcp`
   : "https://your-project-ref.supabase.co/functions/v1/memory-mcp";
 const envPath = path.join(cwd, ".env");
+const configPaths = resolveAiMemoryPaths(process.env.AI_MEMORY_CONFIG_DIR);
 
 const args = new Set(process.argv.slice(2));
 if (args.has("--help") || args.has("-h")) {
@@ -25,42 +40,59 @@ try {
   console.log("AI Memory onboarding");
   console.log("This will guide you through Supabase setup, function deployment, and agent registration.\n");
 
+  let config = readUserConfig(configPaths.configPath);
+  const aiMemoryEnv = readEnvFile(configPaths.envPath);
   const projectRef = await ask("Supabase project ref", defaultProjectRef || "");
   const endpoint = await ask("Memory MCP endpoint URL", projectRef
     ? `https://${projectRef}.supabase.co/functions/v1/memory-mcp`
     : defaultEndpoint);
 
-  const authMode = await choose(
-    "Auth mode",
-    [
-      { key: "1", label: "Shared key", value: "shared" },
-      { key: "2", label: "Scoped client", value: "scoped" }
-    ],
-    "1"
-  );
+  config = {
+    ...config,
+    url: endpoint
+  };
 
-  const suggestedSecret = crypto.randomBytes(32).toString("base64");
+  const agentResolution = await resolveAgent(config);
+  config = agentResolution.config;
+  const agentId = agentResolution.agentId;
+  const authMode = agentResolution.authMode;
+  const clientId = authMode === "scoped" ? agentResolution.clientId : "";
+
   const accessKey = await ask(
     authMode === "shared" ? "Shared MCP access key" : "Scoped client secret",
-    suggestedSecret
+    crypto.randomBytes(32).toString("base64")
   );
 
-  let clientId = "";
-  let clientsJson = "";
-  if (authMode === "scoped") {
-    clientId = await ask("Scoped client ID", "ai-memory-client");
-    const workspaceId = await ask("Workspace namespace", cwd);
-    clientsJson = JSON.stringify([
-      {
-        client_id: clientId,
-        secret: accessKey,
-        namespace: {
-          scope: "workspace",
-          workspace_id: workspaceId
-        }
+  const namespace = {
+    scope: "workspace",
+    workspace_id: cwd,
+    agent_id: null,
+    topic: null,
+    tags: []
+  };
+  config = ensureAgentNamespace(config, agentId, namespace);
+  config = setCurrentAgent(config, agentId);
+  const now = new Date().toISOString();
+  config.createdAt = config.createdAt || now;
+  config.updatedAt = now;
+  writeUserConfig(configPaths.configPath, config);
+
+  const agentSecrets = mergeAgentSecretInventory(
+    aiMemoryEnv.MEMORY_MCP_AGENT_SECRETS_JSON,
+    {
+      [agentId]: {
+        authMode,
+        clientId,
+        secret: accessKey
       }
-    ], null, 2);
-  }
+    }
+  );
+
+  writeAiMemoryEnv(configPaths.envPath, {
+    MEMORY_MCP_ACCESS_KEY: accessKey,
+    MEMORY_MCP_CLIENT_ID: clientId,
+    MEMORY_MCP_AGENT_SECRETS_JSON: JSON.stringify(agentSecrets)
+  });
 
   const localEnv = {
     MEMORY_MCP_URL: endpoint,
@@ -69,6 +101,7 @@ try {
   };
   upsertEnvFile(envPath, localEnv);
   console.log(`\nUpdated local env file: ${envPath}`);
+  console.log(`Updated ai-memory config: ${configPaths.configPath}`);
 
   if (await confirm("Run `supabase login` now if needed?", false)) {
     run("supabase", ["login"], { interactive: true });
@@ -101,7 +134,8 @@ try {
     if (authMode === "shared") {
       secretPairs.push(`MEMORY_MCP_ACCESS_KEY=${accessKey}`);
     } else {
-      secretPairs.push(`MEMORY_MCP_CLIENTS_JSON=${clientsJson}`);
+      const scopedClientsJson = buildScopedClientsJson(config, agentSecrets);
+      secretPairs.push(`MEMORY_MCP_CLIENTS_JSON=${JSON.stringify(scopedClientsJson, null, 2)}`);
     }
 
     const rateLimitWindow = await ask("Rate limit window ms", process.env.MEMORY_RATE_LIMIT_WINDOW_MS ?? "60000");
@@ -116,11 +150,11 @@ try {
     run("supabase", ["functions", "deploy", "memory-mcp", "--project-ref", projectRef]);
   }
 
-  const agentsRaw = await ask(
-    "Which agents should be configured? (comma-separated: claude, codex, cursor, openclaw, none)",
+  const hostsRaw = await ask(
+    "Which hosts should be configured? (comma-separated: claude, codex, cursor, openclaw, none)",
     "claude,codex,cursor"
   );
-  const agents = agentsRaw.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+  const hosts = hostsRaw.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
   const setupEnv = {
     ...process.env,
     MEMORY_MCP_URL: endpoint,
@@ -128,20 +162,20 @@ try {
     MEMORY_MCP_CLIENT_ID: clientId
   };
 
-  for (const agent of agents) {
-    if (agent === "none") {
+  for (const host of hosts) {
+    if (host === "none") {
       break;
     }
-    if (agent === "claude") {
+    if (host === "claude") {
       run("npm", ["run", "setup:claude"], { env: setupEnv, interactive: true });
-    } else if (agent === "codex") {
+    } else if (host === "codex") {
       run("npm", ["run", "setup:codex"], { env: setupEnv, interactive: true });
-    } else if (agent === "cursor") {
+    } else if (host === "cursor") {
       run("npm", ["run", "setup:cursor"], { env: setupEnv, interactive: true });
-    } else if (agent === "openclaw") {
+    } else if (host === "openclaw") {
       run("npm", ["run", "setup:openclaw"], { env: setupEnv, interactive: true });
-    } else if (agent) {
-      console.warn(`Skipping unknown agent: ${agent}`);
+    } else if (host) {
+      console.warn(`Skipping unknown host: ${host}`);
     }
   }
 
@@ -158,7 +192,11 @@ try {
 
   console.log("\nOnboarding complete.");
   console.log(`Endpoint: ${endpoint}`);
-  if (agents.includes("claude")) {
+  console.log(`Current agent: ${agentId}`);
+  if (clientId) {
+    console.log(`Scoped client ID: ${clientId}`);
+  }
+  if (hosts.includes("claude")) {
     const red = "\u001b[31m";
     const reset = "\u001b[0m";
     console.log(`${red}Claude launch command:${reset}`);
@@ -167,6 +205,162 @@ try {
   console.log("If Codex or Claude was already open, restart it so it reloads MCP config.");
 } finally {
   rl?.close();
+}
+
+async function resolveAgent(config) {
+  const agentIds = listAgentIds(config);
+  if (agentIds.length === 0) {
+    return createAgent(config, "");
+  }
+
+  const selection = await choose(
+    "Select an agent host",
+    [
+      ...agentIds.map((agentId, index) => ({ key: String(index + 1), label: agentId, value: agentId })),
+      { key: String(agentIds.length + 1), label: "new agent", value: "__new__" }
+    ],
+    "1"
+  );
+
+  if (selection === "__new__") {
+    return createAgent(config, "");
+  }
+
+  const existing = config.agents[selection];
+  const authMode = await choose(
+    `Auth mode for '${selection}'`,
+    [
+      { key: "1", label: "Shared key", value: "shared" },
+      { key: "2", label: "Scoped client", value: "scoped" }
+    ],
+    existing?.authMode === "shared" ? "1" : "2"
+  );
+  const clientId = authMode === "scoped"
+    ? await ask("Scoped client ID", existing?.clientId || `${selection}-memory`)
+    : "";
+  if (authMode === "scoped") {
+    validateClientId(clientId);
+  }
+
+  return {
+    config: upsertAgent(config, selection, { authMode, clientId }),
+    agentId: selection,
+    authMode,
+    clientId
+  };
+}
+
+async function createAgent(config, fallbackAgentId) {
+  const selection = await choose(
+    "Choose the new agent host",
+    [
+      ...BUILTIN_AGENT_IDS.map((agentId, index) => ({ key: String(index + 1), label: agentId, value: agentId })),
+      { key: String(BUILTIN_AGENT_IDS.length + 1), label: "custom", value: "__custom__" }
+    ],
+    "1"
+  );
+
+  const agentId = selection === "__custom__"
+    ? await ask("Agent ID", fallbackAgentId || "team-agent")
+    : selection;
+  validateAgentId(agentId);
+
+  const authMode = await choose(
+    "Auth mode",
+    [
+      { key: "1", label: "Shared key", value: "shared" },
+      { key: "2", label: "Scoped client", value: "scoped" }
+    ],
+    "2"
+  );
+  const clientId = authMode === "scoped"
+    ? await ask("Scoped client ID", `${agentId}-memory`)
+    : "";
+  if (authMode === "scoped") {
+    validateClientId(clientId);
+  }
+
+  return {
+    config: upsertAgent(config, agentId, { authMode, clientId }),
+    agentId,
+    authMode,
+    clientId
+  };
+}
+
+function ensureAgentNamespace(config, agentId, namespace) {
+  const namespaces = config.agents[agentId]?.namespaces ?? [];
+  const exists = namespaces.some((entry) => JSON.stringify(entry) === JSON.stringify(namespace));
+  if (exists) {
+    return config;
+  }
+  return addAgentNamespace(config, agentId, namespace);
+}
+
+function buildScopedClientsJson(config, agentSecrets) {
+  const scopedClients = [];
+
+  for (const [agentId, agent] of Object.entries(config.agents)) {
+    if (agent.authMode !== "scoped") {
+      continue;
+    }
+
+    const inventory = agentSecrets[agentId];
+    if (!inventory?.secret) {
+      throw new Error(`Missing local secret for scoped agent '${agentId}'. Re-run onboarding for that agent before setting Supabase secrets.`);
+    }
+    if (!inventory?.clientId) {
+      throw new Error(`Scoped agent '${agentId}' is missing a local client ID in the env inventory.`);
+    }
+
+    const namespace = agent.namespaces[0];
+    if (!namespace) {
+      throw new Error(`Scoped agent '${agentId}' has no namespace. Add a namespace before setting Supabase secrets.`);
+    }
+
+    scopedClients.push({
+      client_id: inventory.clientId,
+      secret: inventory.secret,
+      namespace
+    });
+  }
+
+  return scopedClients;
+}
+
+function mergeAgentSecretInventory(existingRaw, nextEntries) {
+  const existing = parseAgentSecretInventory(existingRaw);
+  return {
+    ...existing,
+    ...nextEntries
+  };
+}
+
+function parseAgentSecretInventory(raw) {
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([agentId, entry]) => String(agentId || "").trim() && entry && typeof entry === "object" && !Array.isArray(entry))
+        .map(([agentId, entry]) => [
+          agentId,
+          {
+            authMode: entry.authMode === "shared" ? "shared" : "scoped",
+            clientId: String(entry.clientId || ""),
+            secret: String(entry.secret || "")
+          }
+        ])
+    );
+  } catch {
+    return {};
+  }
 }
 
 function printHelp() {
@@ -203,8 +397,7 @@ async function choose(label, options, fallbackKey) {
     console.log(`  ${option.key}. ${option.label}`);
   }
   const selected = await ask("Choose an option", fallbackKey);
-  const match = options.find((option) => option.key === selected) ?? options.find((option) => option.key === fallbackKey);
-  return match.value;
+  return resolveChoice(options, selected, fallbackKey).value;
 }
 
 function run(command, args, options = {}) {
@@ -261,6 +454,10 @@ function upsertEnvFile(filePath, values) {
   }
 
   fs.writeFileSync(filePath, `${updated.filter(Boolean).join("\n")}\n`);
+}
+
+function writeAiMemoryEnv(filePath, values) {
+  upsertEnvFile(filePath, values);
 }
 
 function quoteEnv(value) {

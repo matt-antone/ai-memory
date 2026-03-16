@@ -62,16 +62,16 @@ if command -v claude >/dev/null 2>&1; then
 fi
 
 if [[ "${#TARGET_LABELS[@]}" -eq 0 ]]; then
-  echo "No ai-memory installs were detected for Codex, Cursor, Claude, or OpenClaw."
+  echo "No ai-memory host setups were detected for Codex, Cursor, Claude, or OpenClaw."
   exit 0
 fi
 
-echo "Detected ai-memory installs:"
+echo "Detected ai-memory host setups:"
 for i in "${!TARGET_LABELS[@]}"; do
   echo "  $((i + 1))) ${TARGET_LABELS[$i]}"
 done
 echo
-read -r -p "Choose one install to remove [1]: " selection
+read -r -p "Choose one setup to remove [1]: " selection
 selection="${selection:-1}"
 if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#TARGET_LABELS[@]} )); then
   echo "Invalid selection." >&2

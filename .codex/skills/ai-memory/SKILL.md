@@ -5,7 +5,7 @@ description: Use ai-memory as the persistent memory and recall system for this r
 
 # AI Memory
 
-Use `ai-memory` as the durable memory layer for this repository.
+Use `ai-memory` as the durable memory layer for this repository when `memory.*` tools are available.
 
 ## Purpose
 
@@ -20,7 +20,7 @@ Use `ai-memory` as the durable memory layer for this repository.
 
 At the start of a significant task:
 
-1. Call `memory.search` with a query about the user, repo, project, feature, bug, or topic.
+1. If `memory.*` tools are available, call `memory.search` with a query about the user, repo, project, feature, bug, or topic.
 2. Read the most relevant hit or hits. If the tool returns full items, inspect `hit.item`. If it returns only ids in the current client, call `memory.get`.
 3. Use that context before continuing.
 
@@ -134,7 +134,7 @@ Use to review recent activity in the current namespace.
 
 ## Operating rules
 
-- You MUST search before guessing when prior context may exist.
+- You MUST search before guessing when prior context may exist and `memory.*` tools are available.
 - You MUST read relevant hits instead of relying only on titles or summaries.
 - You MUST use namespace consistently for repo-tied work.
 - You MUST say so briefly and continue the main task when `ai-memory` is unavailable.

@@ -21,6 +21,15 @@ After setup, the agent can call these tools:
 - `memory.list_recent`
 - `memory.promote_summary`
 
+## Tool schema quick reference
+
+- `memory.write.kind` must be one of: `memory`, `document`, `chunk`, `summary`, `fact`.
+- Use `fact` for small durable notes such as decisions, preferences, bug fixes, or task outcomes.
+- Use `summary` for condensed reusable takeaways.
+- Use `document` and `chunk` via `memory.ingest_document`, not direct manual writes.
+- Use `memory` as the general-purpose fallback for durable items that are not clearly a `fact` or `summary`.
+- Agents should not invent kinds like `note`; unsupported enum values are rejected by schema validation.
+
 In practice, that gives the agent:
 
 - explicit durable memory writes
@@ -113,7 +122,7 @@ This repo also includes a helper script:
 npm run setup:codex
 ```
 
-The script prompts for either a project-local install at `.codex/config.toml` or a global install at `~/.codex/config.toml`.
+The script resolves the current agent from `~/.ai-config/ai-memory/config.json`, then prompts for either a project-local install at `.codex/config.toml` or a global install at `~/.codex/config.toml`.
 If an `ai-memory` entry already exists, it warns and asks whether to merge or overwrite before changing anything.
 
 ```toml
@@ -136,7 +145,7 @@ Important:
 - if the host is already running, fully restart it after config changes
 - the edge function fails closed if credentials are missing or blank
 
-If you use a scoped client, set `MEMORY_MCP_CLIENT_ID` before running the script and it will write that `x-memory-client-id` into the generated config for that install. Do not set a machine-global `MEMORY_MCP_CLIENT_ID` when multiple agents or repos share the same computer.
+If you use a scoped client, the setup flow writes that client ID into the generated host config for the current agent. Do not set a machine-global `MEMORY_MCP_CLIENT_ID` when multiple agents or repos share the same computer.
 
 ## Quickstart: Claude Code
 
@@ -148,7 +157,7 @@ This repo also includes a helper script:
 npm run setup:claude
 ```
 
-The script now prompts for `project`, `user`, or `local` Claude scope before registering the server.
+The script resolves the current agent from `~/.ai-config/ai-memory/config.json`, then prompts for `project`, `user`, or `local` Claude scope before registering the server.
 If an `ai-memory` entry already exists in that scope, it warns before replacing it.
 
 You can override the endpoint or scope when needed:
