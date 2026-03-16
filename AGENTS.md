@@ -17,6 +17,7 @@ Use `ai-memory` as the persistent memory and recall system for work in this repo
 - `Task start:` Start with a workspace-scoped query using `namespace: { scope: "workspace", workspace_id: "/Users/matthewantone/CurrentDevProjects/AI/ai-memory" }` when the task is about this repo. If that returns no hits, follow with `memory.list_recent` in the same namespace and then a second targeted `memory.search` using likely topics or recent decisions.
 - `During task:` When you uncover stable facts, decisions, preferences, patterns, or reusable implementation notes, store them explicitly with `memory.write`.
 - `Task end:` After completing a significant task, persist the key outcome, decision, or reusable summary with `memory.write`. When helpful, link related items with `memory.link`.
+- `Post-task reflection:` Reflect on what you learned from the task. If there are new patterns, gotchas, architectural decisions, or reusable insights — save them with `memory.write`. Skip obvious or already-documented things.
 - `Long content:` When you need to store substantial notes, docs, or transcripts, use `memory.ingest_document` so the document is chunked and remains searchable.
 - `Condensing knowledge:` When a stored item should become a durable takeaway, use `memory.promote_summary` to create a higher-value summary linked back to its source.
 

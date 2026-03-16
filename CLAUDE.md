@@ -75,6 +75,8 @@ When `memory.*` MCP tools are available, use them as a persistent memory loop fo
 
 **Task end**: Write a concise outcome summary with `memory.write`. Link related items with `memory.link` when the relationship aids future retrieval. Use `memory.promote_summary` to distill a detailed item into a durable takeaway.
 
+**Post-task reflection**: After completing a task, reflect on what you learned. If there are new patterns, gotchas, architectural decisions, or reusable insights — save them with `memory.write`. Skip obvious or already-documented things.
+
 **Long content**: Use `memory.ingest_document` instead of many individual writes.
 
 **Default namespace** for all operations in this repo:
@@ -107,6 +109,7 @@ When `memory.*` MCP tools are available, use them as a persistent memory loop on
 - **Task start**: Call `memory.search` with a relevant query to surface prior context before starting work.
 - **During work**: Persist stable facts, decisions, discoveries, and bug workarounds with `memory.write`. Skip transient progress chatter.
 - **Task end**: Write a concise outcome summary with `memory.write`. Link related items with `memory.link`. Use `memory.promote_summary` to distill detailed items into durable takeaways.
+- **Post-task reflection**: After completing a task, reflect on what you learned. If there are new patterns, gotchas, architectural decisions, or reusable insights — save them with `memory.write`. Skip obvious or already-documented things.
 - **Long content**: Use `memory.ingest_document` instead of many individual writes.
 
 If `memory.*` tools are unavailable, say so briefly and continue the main task.
