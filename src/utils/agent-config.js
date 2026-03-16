@@ -83,6 +83,11 @@ export function inspectJsonServerConfig(content, serverName) {
 
 export function upsertJsonServerConfig(content, serverName, url, clientId = "", options = {}) {
   const data = normalizeJsonConfig(content);
+  for (const alias of options.aliasesToRemove ?? []) {
+    if (alias && alias !== serverName) {
+      delete data.mcpServers[alias];
+    }
+  }
   data.mcpServers[serverName] = createJsonServerConfig(url, clientId, options);
   return `${JSON.stringify(data, null, 2)}\n`;
 }

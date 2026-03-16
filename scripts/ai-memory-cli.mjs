@@ -320,9 +320,16 @@ async function installJsonHost(label, hostId, config, clientId, agentId) {
   const envFile = hostId === "cursor" && scope === "project/local" ? "${workspaceFolder}/.env" : undefined;
   const overrideEnvVar = hostId === "cursor" ? "AI_MEMORY_CURSOR_CONFIG_PATH" : "AI_MEMORY_OPENCLAW_CONFIG_PATH";
   const configPath = process.env[overrideEnvVar] || await ask(`${label} config path`, pathConfig);
+  const sourceServerName = getAgentServerName(config, agentId);
+  const serverName = hostId === "cursor"
+    ? normalizeCursorServerName(sourceServerName)
+    : sourceServerName;
+  const aliasesToRemove = hostId === "cursor" && sourceServerName !== serverName
+    ? [sourceServerName]
+    : [];
 
   const existingContent = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "";
-  const inspect = inspectJsonServerConfig(existingContent, config.serverName);
+  const inspect = inspectJsonServerConfig(existingContent, serverName);
   if (inspect.exists) {
     const overwrite = process.env.AI_MEMORY_OVERWRITE_EXISTING
       ? parseBoolean(process.env.AI_MEMORY_OVERWRITE_EXISTING, true)
@@ -332,9 +339,10 @@ async function installJsonHost(label, hostId, config, clientId, agentId) {
     }
   }
 
-  const nextContent = upsertJsonServerConfig(existingContent, config.serverName, config.url, clientId, {
+  const nextContent = upsertJsonServerConfig(existingContent, serverName, config.url, clientId, {
     envStyle,
-    envFile
+    envFile,
+    aliasesToRemove
   });
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, nextContent);
@@ -343,6 +351,11 @@ async function installJsonHost(label, hostId, config, clientId, agentId) {
     ? "Open Cursor and confirm the MCP server is enabled for the selected scope."
     : "Restart OpenClaw or reload its MCP settings after config changes.";
   printInstallSummary(agentId, clientId, configPath, restartMessage);
+}
+
+function normalizeCursorServerName(serverName) {
+  const normalized = String(serverName || "").replace(/[^A-Za-z0-9_]/g, "_");
+  return normalized || "ai_memory";
 }
 
 function resolveJsonHostConfigPath(hostId, scope) {

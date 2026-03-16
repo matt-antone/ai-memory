@@ -83,6 +83,44 @@ test("cli install codex prefers the codex agent and writes scoped headers", () =
   assert.match(codexConfig, /x-memory-client-id = "client-a"/);
 });
 
+test("cli install cursor normalizes the Cursor MCP server key to underscores", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-cli-cursor-"));
+  const configDir = path.join(tempDir, "config");
+  const cursorPath = path.join(tempDir, "project", ".cursor", "mcp.json");
+
+  seedConfig(configDir, {
+    serverName: "ai-memory",
+    url: "https://example.test/memory",
+    agents: {
+      cursor: {
+        authMode: "scoped",
+        clientId: "client-a",
+        serverName: "",
+        namespaces: []
+      }
+    },
+    currentAgent: "cursor"
+  }, "secret-123", {
+    cursor: { authMode: "scoped", clientId: "client-a", secret: "secret-123" }
+  });
+
+  const result = runCli(["install", "cursor"], {
+    cwd: tempDir,
+    env: {
+      AI_MEMORY_CONFIG_DIR: configDir,
+      AI_MEMORY_INSTALL_SCOPE: "global/user",
+      AI_MEMORY_CURSOR_CONFIG_PATH: cursorPath
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(fs.readFileSync(cursorPath, "utf8"));
+
+  assert.equal(parsed.mcpServers.ai_memory.url, "https://example.test/memory");
+  assert.equal(parsed.mcpServers.ai_memory.headers["x-memory-client-id"], "client-a");
+  assert.equal("ai-memory" in parsed.mcpServers, false);
+});
+
 test("cli install claude omits scoped client header for shared auth agents", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-memory-cli-claude-"));
   const configDir = path.join(tempDir, "config");
