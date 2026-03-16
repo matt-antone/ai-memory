@@ -92,3 +92,36 @@ Add `topic` (e.g. `"search"`, `"schema"`, `"auth"`) when the task is focused on 
 - If first search returns nothing, follow up with `memory.list_recent` in the same namespace.
 
 **If `memory.*` tools are unavailable**: say so briefly and continue the main task.
+
+## Setup
+
+Run this once to install the memory loop into the global config for Claude Code, Codex, Cursor, and OpenClaw.
+
+The memory loop block to append/create in each target:
+
+```
+## ai-memory loop
+
+When `memory.*` MCP tools are available, use them as a persistent memory loop on every task:
+
+- **Task start**: Call `memory.search` with a relevant query to surface prior context before starting work.
+- **During work**: Persist stable facts, decisions, discoveries, and bug workarounds with `memory.write`. Skip transient progress chatter.
+- **Task end**: Write a concise outcome summary with `memory.write`. Link related items with `memory.link`. Use `memory.promote_summary` to distill detailed items into durable takeaways.
+- **Long content**: Use `memory.ingest_document` instead of many individual writes.
+
+If `memory.*` tools are unavailable, say so briefly and continue the main task.
+```
+
+### Targets
+
+1. **Claude Code** — append the block to `~/.claude/CLAUDE.md`
+
+2. **Codex** — append the block to `~/.codex/AGENTS.md`
+
+3. **Cursor** — create `~/.cursor/rules/ai-memory.mdc` with the block as the full file content (create the `~/.cursor/rules/` directory if it doesn't exist)
+
+4. **OpenClaw** — append the block to `~/.openclaw/workspace/AGENTS.md` (create the file and directory if they don't exist)
+
+### How to run
+
+When the user says "run setup" or "install memory loop", execute the four edits above using the available file tools. Confirm which targets were updated and note any that were skipped (e.g. file not found, tool unavailable).
