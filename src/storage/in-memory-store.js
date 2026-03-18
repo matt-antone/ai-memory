@@ -33,29 +33,18 @@ function flattenMetadata(value) {
   return parts;
 }
 
-function matchesNamespace(itemNamespace = {}, requestedNamespace = {}) {
-  const entries = Object.entries(requestedNamespace || {}).filter(([, value]) => {
-    if (Array.isArray(value)) {
-      return value.length > 0;
-    }
-    return value !== null && value !== undefined && value !== "";
-  });
-
-  for (const [key, value] of entries) {
-    if (Array.isArray(value)) {
-      const actual = Array.isArray(itemNamespace[key]) ? itemNamespace[key] : [];
-      const missing = value.some((entry) => !actual.includes(entry));
-      if (missing) {
-        return false;
-      }
-      continue;
-    }
-
-    if (itemNamespace[key] !== value) {
+function matchesNamespace(itemNs = {}, requestedNs = {}) {
+  if (requestedNs.repo_url) {
+    // include exact match OR globals (repo_url null/undefined)
+    if (itemNs.repo_url && itemNs.repo_url !== requestedNs.repo_url) {
       return false;
     }
   }
-
+  if (requestedNs.agent) {
+    if (itemNs.agent !== requestedNs.agent) {
+      return false;
+    }
+  }
   return true;
 }
 

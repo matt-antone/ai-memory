@@ -33,7 +33,9 @@ function boundedNumberArray(field) {
 
 const boundedTags = z.array(boundedString(MAX_TAG_LENGTH, "tag")).max(MAX_TAGS, "too many tags").optional();
 const boundedMetadata = z.record(z.string(), z.unknown()).optional();
-const boundedNamespace = z.record(z.string(), z.unknown()).optional();
+const boundedNamespace = z.object({
+  repo_url: z.string().url("repo_url must be a valid URL").nullable().optional()
+}).strict().optional();
 
 export const memoryWriteSchema = z.object({
   content: boundedString(MAX_CONTENT_LENGTH, "content"),
@@ -97,6 +99,10 @@ export const memoryIngestSchema = z.object({
 export const memoryListRecentSchema = z.object({
   namespace: boundedNamespace,
   limit: z.number().int().min(1).max(MAX_K).optional()
+});
+
+export const memoryArchiveSchema = z.object({
+  id: boundedString(MAX_ID_LENGTH, "id")
 });
 
 export const memoryPromoteSchema = z.object({

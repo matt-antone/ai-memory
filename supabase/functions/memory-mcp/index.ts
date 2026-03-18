@@ -4,11 +4,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 import { asToolErrorResult, asToolResult } from "../../../src/core/mcp-format.js";
-import { loadRuntimePolicy, sanitizeRuntimePolicy, authenticateRequest, enforceNamespace, assertNamespaceAccess, InMemoryRateLimiter, getRequestId, getRequestRateLimitKey } from "../../../src/core/runtime-auth.js";
+import { createOpenAIEmbedder, createSupabaseEmbedder } from "../../../src/core/embedders.js";
+import { loadRuntimePolicy, sanitizeRuntimePolicy, authenticateRequest, enforceNamespace, InMemoryRateLimiter, getRequestId, getRequestRateLimitKey } from "../../../src/core/runtime-auth.js";
 import { errorPayload, normalizeError, upstreamError, validationError } from "../../../src/core/runtime-errors.js";
 import { MemoryService } from "../../../src/core/service.js";
 import { SupabaseRestStore } from "../../../src/storage/supabase-rest-store.js";
 import {
+  memoryArchiveSchema,
   memoryGetSchema,
   memoryIngestSchema,
   memoryLinkSchema,
@@ -28,6 +30,18 @@ const store = new SupabaseRestStore({
   url: Deno.env.get("SUPABASE_URL") ?? "",
   serviceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 });
+
+function createEmbedder() {
+  const openAIKey = Deno.env.get("OPENAI_API_KEY");
+  if (openAIKey) {
+    const model = Deno.env.get("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
+    return createOpenAIEmbedder(openAIKey, model);
+  }
+  const supabaseModel = Deno.env.get("SUPABASE_EMBEDDING_MODEL") ?? "gte-small";
+  return createSupabaseEmbedder(supabaseModel);
+}
+
+const embedder = createEmbedder();
 const MAX_REQUEST_BODY_BYTES = parsePositiveInt(Deno.env.get("MEMORY_MAX_REQUEST_BODY_BYTES"), 256 * 1024);
 
 console.log(JSON.stringify({
@@ -37,7 +51,7 @@ console.log(JSON.stringify({
 }));
 
 function createMemoryServer(requestContext: Record<string, unknown>) {
-  const service = new MemoryService(store);
+  const service = new MemoryService(store, { embedder });
   const server = new McpServer({
     name: "supabase-mcp-memory",
     version: "0.1.0"
@@ -90,6 +104,12 @@ function createMemoryServer(requestContext: Record<string, unknown>) {
     const namespace = enforceNamespace(args.namespace, context);
     return service.listRecent({ ...args, namespace }, context);
   });
+
+  registerTool(server, service, requestContext, "memory.archive", {
+    title: "Archive Memory",
+    description: "Archive a memory item so it is excluded from search results.",
+    schema: memoryArchiveSchema
+  }, async (args, context) => service.archiveMemory(args, context));
 
   registerTool(server, service, requestContext, "memory.promote_summary", {
     title: "Promote Summary",
@@ -178,8 +198,7 @@ Deno.serve(async (request: Request) => {
     const caller = authenticateRequest(request, runtimePolicy);
     rateLimiter.consume(caller.clientId);
     const requestContext = {
-      ...caller,
-      assertNamespaceAccess: (namespace) => assertNamespaceAccess(namespace, caller)
+      ...caller
     };
 
     let parsedBody: unknown = undefined;

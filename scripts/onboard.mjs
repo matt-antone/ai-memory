@@ -7,7 +7,6 @@ import { stdin as input, stdout as output } from "node:process";
 import { spawnSync } from "node:child_process";
 import { resolveChoice } from "../src/utils/prompt.js";
 import {
-  addAgentNamespace,
   getCurrentAgent,
   readEnvFile,
   readUserConfig,
@@ -62,14 +61,6 @@ try {
     crypto.randomBytes(32).toString("base64")
   );
 
-  const namespace = {
-    scope: "workspace",
-    workspace_id: cwd,
-    agent_id: null,
-    topic: null,
-    tags: []
-  };
-  config = ensureAgentNamespace(config, installKey, namespace);
   config = setCurrentAgent(config, installKey);
   const now = new Date().toISOString();
   config.createdAt = config.createdAt || now;
@@ -254,15 +245,6 @@ async function resolveInstallIdentity(config) {
   };
 }
 
-function ensureAgentNamespace(config, agentId, namespace) {
-  const namespaces = config.installs[agentId]?.namespaces ?? [];
-  const exists = namespaces.some((entry) => JSON.stringify(entry) === JSON.stringify(namespace));
-  if (exists) {
-    return config;
-  }
-  return addAgentNamespace(config, agentId, namespace);
-}
-
 function buildScopedClientsJson(config, agentSecrets) {
   const scopedClients = [];
 
@@ -279,15 +261,9 @@ function buildScopedClientsJson(config, agentSecrets) {
       throw new Error(`Scoped install '${installKey}' is missing a local client ID in the env inventory.`);
     }
 
-    const namespace = install.namespaces[0];
-    if (!namespace) {
-      throw new Error(`Scoped install '${installKey}' has no namespace. Add a namespace before setting Supabase secrets.`);
-    }
-
     scopedClients.push({
       client_id: inventory.clientId,
-      secret: inventory.secret,
-      namespace
+      secret: inventory.secret
     });
   }
 

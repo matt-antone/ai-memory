@@ -1,5 +1,6 @@
 import { createId } from "../utils/id.js";
 import { chunkText } from "./chunking.js";
+import { buildEmbedText } from "./embedders.js";
 import { enrichMemoryInput } from "./memory-enrichment.js";
 import { combineScores } from "./ranking.js";
 import {
@@ -15,6 +16,7 @@ export class MemoryService {
   constructor(store, options = {}) {
     this.store = store;
     this.clock = options.clock ?? (() => new Date());
+    this.embedder = options.embedder ?? null;
   }
 
   async writeMemory(input, context = {}) {
@@ -41,13 +43,16 @@ export class MemoryService {
 
     const created = await this.store.createItem(item);
 
-    if (enriched.embedding) {
+    const embeddingVector = enriched.embedding
+      ?? (this.embedder ? await this.embedder(buildEmbedText(item)).catch(() => null) : null);
+
+    if (embeddingVector) {
       await this.store.createEmbedding({
         id: createId("emb"),
         item_id: item.id,
-        embedding: enriched.embedding,
-        embedding_model: enriched.embedding_model ?? "caller-supplied",
-        dimensions: enriched.embedding.length,
+        embedding: embeddingVector,
+        embedding_model: enriched.embedding ? (enriched.embedding_model ?? "caller-supplied") : "auto",
+        dimensions: embeddingVector.length,
         created_at: now
       });
     }
@@ -76,7 +81,7 @@ export class MemoryService {
       created_at: now
     });
 
-    return created;
+    return toPublicItem(created);
   }
 
   async searchMemory(input, context = {}) {
@@ -98,7 +103,7 @@ export class MemoryService {
       .map((candidate) => {
         const scoring = combineScores(candidate);
         return {
-          item: candidate.item,
+          item: toPublicItem(candidate.item),
           score: scoring.total,
           breakdown: scoring.breakdown,
           provenance: {
@@ -119,10 +124,11 @@ export class MemoryService {
 
     let expandedContext = [];
     if ((input.expand_depth ?? 0) > 0 && hits.length > 0) {
-      expandedContext = await this.store.expandEdges({
+      const raw = await this.store.expandEdges({
         itemIds: hits.map((hit) => hit.item.id),
         depth: input.expand_depth
       });
+      expandedContext = raw.map(({ edge, item }) => ({ edge, item: toPublicItem(item) }));
     }
 
     await this.store.createEvent({
@@ -153,7 +159,6 @@ export class MemoryService {
     if (!item) {
       throw new Error(`memory item not found: ${input.id}`);
     }
-    context.assertNamespaceAccess?.(item.namespace);
     await this.store.createEvent({
       id: createId("evt"),
       item_id: item.id,
@@ -164,7 +169,7 @@ export class MemoryService {
       },
       created_at: this.clock().toISOString()
     });
-    return item;
+    return toPublicItem(item);
   }
 
   async linkMemory(input, context = {}) {
@@ -174,8 +179,6 @@ export class MemoryService {
     if (!from || !to) {
       throw new Error("from_id and to_id must reference existing memory items");
     }
-    context.assertNamespaceAccess?.(from.namespace);
-    context.assertNamespaceAccess?.(to.namespace);
     const now = this.clock().toISOString();
     const edge = {
       id: createId("edge"),
@@ -284,7 +287,26 @@ export class MemoryService {
       },
       created_at: this.clock().toISOString()
     });
-    return items;
+    return items.map(toPublicItem);
+  }
+
+  async archiveMemory(input, context = {}) {
+    const item = await this.store.getItem(input.id);
+    if (!item) {
+      throw new Error(`memory item not found: ${input.id}`);
+    }
+    await this.store.archiveItem(input.id);
+    await this.store.createEvent({
+      id: createId("evt"),
+      item_id: input.id,
+      event_type: "memory.archived",
+      payload: {
+        actor: buildActor(context),
+        request_id: context.requestId ?? null
+      },
+      created_at: this.clock().toISOString()
+    });
+    return { id: input.id, archived: true };
   }
 
   async promoteSummary(input, context = {}) {
@@ -313,6 +335,12 @@ export class MemoryService {
 
     return summary;
   }
+}
+
+function toPublicItem(item) {
+  if (!item?.metadata?.retrieval) return item;
+  const { retrieval, ...rest } = item.metadata;
+  return { ...item, metadata: rest };
 }
 
 function normalizeImportance(value, fallback = 0.5) {

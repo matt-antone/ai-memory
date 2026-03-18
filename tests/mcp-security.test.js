@@ -10,6 +10,7 @@ import {
   memoryWriteSchema
 } from "../src/core/mcp-security.js";
 
+
 test("access key configuration fails closed when missing or blank", () => {
   assert.throws(() => getRequiredAccessKey(new Map()), /MEMORY_MCP_ACCESS_KEY must be configured/);
   assert.throws(
@@ -76,6 +77,32 @@ test("write schema bounds content, embeddings, and links", () => {
         })
       }),
     /too many links/
+  );
+});
+
+test("namespace schema rejects agent and repo_name as caller-set fields", () => {
+  // agent is system-set, must be rejected
+  assert.throws(
+    () => memoryWriteSchema.parse({ content: "x", kind: "memory", namespace: { agent: "codex" } }),
+    /unrecognized_keys|Unrecognized/i
+  );
+  // repo_name is derived, must be rejected
+  assert.throws(
+    () => memoryWriteSchema.parse({ content: "x", kind: "memory", namespace: { repo_name: "ai-memory" } }),
+    /unrecognized_keys|Unrecognized/i
+  );
+});
+
+test("namespace schema accepts valid repo_url and rejects invalid URL", () => {
+  assert.doesNotThrow(() =>
+    memorySearchSchema.parse({ query: "test", namespace: { repo_url: "https://github.com/user/repo" } })
+  );
+  assert.doesNotThrow(() =>
+    memorySearchSchema.parse({ query: "test", namespace: { repo_url: null } })
+  );
+  assert.throws(
+    () => memorySearchSchema.parse({ query: "test", namespace: { repo_url: "not-a-url" } }),
+    /url|invalid/i
   );
 });
 

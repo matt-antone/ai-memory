@@ -52,7 +52,7 @@ export class SupabaseRestStore {
       body: JSON.stringify(item)
     });
     const data = await parseResponse(response);
-    return Array.isArray(data) ? data[0] : data;
+    return stripInternalFields(Array.isArray(data) ? data[0] : data);
   }
 
   async createEmbedding(record) {
@@ -91,7 +91,7 @@ export class SupabaseRestStore {
       { headers: this.headers }
     );
     const data = await parseResponse(response);
-    return data[0] ?? null;
+    return stripInternalFields(data[0] ?? null);
   }
 
   async updateItem(id, patch) {
@@ -117,7 +117,9 @@ export class SupabaseRestStore {
       { headers: this.headers }
     );
     const data = await parseResponse(response);
-    return data.filter((item) => matchesNamespace(item.namespace, namespace));
+    return data
+      .filter((item) => matchesNamespace(item.namespace, namespace))
+      .map(stripInternalFields);
   }
 
   async searchCandidates({ query, queryEmbedding, namespace, filters, mode, limit = 10 }) {
@@ -135,7 +137,7 @@ export class SupabaseRestStore {
     });
     const data = await parseResponse(response);
     return data.map((candidate) => ({
-      item: candidate.item,
+      item: stripInternalFields(candidate.item),
       vectorScore: Number(candidate.vector_score || 0),
       lexicalScore: Number(candidate.lexical_score || 0),
       recencyScore: Number(candidate.recency_score || 0),
@@ -173,17 +175,25 @@ export class SupabaseRestStore {
   }
 }
 
-function matchesNamespace(itemNamespace = {}, requestedNamespace = {}) {
-  return Object.entries(requestedNamespace || {}).every(([key, value]) => {
-    if (value === null || value === undefined || value === "") {
-      return true;
+function stripInternalFields(item) {
+  if (!item) return item;
+  const { search_vector, ...rest } = item;
+  return rest;
+}
+
+function matchesNamespace(itemNs = {}, requestedNs = {}) {
+  if (requestedNs.repo_url) {
+    // include exact match OR globals (repo_url null/undefined)
+    if (itemNs.repo_url && itemNs.repo_url !== requestedNs.repo_url) {
+      return false;
     }
-    if (Array.isArray(value)) {
-      const current = Array.isArray(itemNamespace[key]) ? itemNamespace[key] : [];
-      return value.every((entry) => current.includes(entry));
+  }
+  if (requestedNs.agent) {
+    if (itemNs.agent !== requestedNs.agent) {
+      return false;
     }
-    return itemNamespace?.[key] === value;
-  });
+  }
+  return true;
 }
 
 function shouldRetryResponse(status) {

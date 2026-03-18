@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import {
   InMemoryRateLimiter,
-  assertNamespaceAccess,
   authenticateRequest,
   enforceNamespace,
   getRequestRateLimitKey,
@@ -16,14 +15,15 @@ test("runtime policy loads admin keys and scoped clients", () => {
     ["MEMORY_MCP_CLIENTS_JSON", JSON.stringify([
       {
         client_id: "client-a",
-        secret: "client-secret",
-        namespace: { scope: "workspace", workspace_id: "repo-a", tags: ["shared"] }
+        secret: "client-secret"
       }
     ])]
   ]));
 
   assert.equal(policy.adminSecrets.includes("admin-secret"), true);
-  assert.equal(policy.clients.get("client-a").namespace.workspace_id, "repo-a");
+  assert.equal(policy.clients.get("client-a").clientId, "client-a");
+  // namespace is no longer stored on client entries
+  assert.equal(policy.clients.get("client-a").namespace, undefined);
 });
 
 test("authenticateRequest accepts scoped clients and shared admin keys", () => {
@@ -32,8 +32,7 @@ test("authenticateRequest accepts scoped clients and shared admin keys", () => {
     ["MEMORY_MCP_CLIENTS_JSON", JSON.stringify([
       {
         client_id: "client-a",
-        secret: "client-secret",
-        namespace: { scope: "workspace", workspace_id: "repo-a" }
+        secret: "client-secret"
       }
     ])]
   ]));
@@ -55,63 +54,42 @@ test("authenticateRequest accepts scoped clients and shared admin keys", () => {
   const admin = authenticateRequest(adminRequest, policy);
 
   assert.equal(client.clientId, "client-a");
-  assert.equal(client.namespace.workspace_id, "repo-a");
   assert.equal(admin.role, "admin");
+  // namespace field no longer returned on caller
+  assert.equal(client.namespace, undefined);
 });
 
-test("enforceNamespace locks scoped callers to configured namespace", () => {
-  const caller = {
-    clientId: "client-a",
-    requestId: "req-1",
-    role: "service",
-    namespace: {
-      scope: "workspace",
-      workspace_id: "repo-a",
-      tags: ["shared"]
-    }
-  };
+test("enforceNamespace stamps agent from caller.clientId and derives repo_name", () => {
+  const caller = { clientId: "codex", requestId: "req-1", role: "service" };
 
-  const namespace = enforceNamespace({ topic: "search", tags: ["extra"] }, caller);
-  assert.deepEqual(namespace, {
-    scope: "workspace",
-    workspace_id: "repo-a",
-    agent_id: null,
-    topic: "search",
-    tags: ["shared", "extra"]
-  });
+  const ns = enforceNamespace({ repo_url: "https://github.com/user/my-repo" }, caller);
+  assert.equal(ns.agent, "codex");
+  assert.equal(ns.repo_url, "https://github.com/user/my-repo");
+  assert.equal(ns.repo_name, "my-repo");
+});
 
+test("enforceNamespace rejects caller-supplied agent", () => {
+  const caller = { clientId: "codex", requestId: "req-1", role: "service" };
   assert.throws(
-    () => enforceNamespace({ workspace_id: "repo-b" }, caller),
-    /not allowed to override namespace field/
+    () => enforceNamespace({ agent: "hacker" }, caller),
+    /agent is set by auth/
   );
 });
 
-test("assertNamespaceAccess rejects out-of-scope items", () => {
-  const caller = {
-    clientId: "client-a",
-    requestId: "req-1",
-    role: "service",
-    namespace: {
-      scope: "workspace",
-      workspace_id: "repo-a",
-      tags: ["shared"]
-    }
-  };
-
-  assert.doesNotThrow(() => assertNamespaceAccess({
-    scope: "workspace",
-    workspace_id: "repo-a",
-    tags: ["shared", "extra"]
-  }, caller));
-
+test("enforceNamespace rejects caller-supplied repo_name", () => {
+  const caller = { clientId: "codex", requestId: "req-1", role: "service" };
   assert.throws(
-    () => assertNamespaceAccess({
-      scope: "workspace",
-      workspace_id: "repo-b",
-      tags: ["shared"]
-    }, caller),
-    /not allowed to access this memory item/
+    () => enforceNamespace({ repo_name: "spoofed" }, caller),
+    /repo_name is derived automatically/
   );
+});
+
+test("enforceNamespace handles null repo_url (global)", () => {
+  const caller = { clientId: "claude", requestId: "req-2", role: "service" };
+  const ns = enforceNamespace({}, caller);
+  assert.equal(ns.agent, "claude");
+  assert.equal(ns.repo_url, null);
+  assert.equal(ns.repo_name, null);
 });
 
 test("in-memory rate limiter rejects callers over the configured threshold", () => {

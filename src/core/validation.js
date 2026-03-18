@@ -60,12 +60,20 @@ export function validateIngestInput(input) {
 }
 
 export function normalizeNamespace(namespace = {}) {
+  const repo_url = namespace.repo_url ?? null;
+  let repo_name = null;
+  if (repo_url) {
+    try {
+      const segments = new URL(repo_url).pathname.split("/").filter(Boolean);
+      repo_name = segments.pop() ?? null;
+    } catch {
+      repo_name = null;
+    }
+  }
   return {
-    scope: namespace.scope ?? "global",
-    workspace_id: namespace.workspace_id ?? null,
-    agent_id: namespace.agent_id ?? null,
-    topic: namespace.topic ?? null,
-    tags: Array.isArray(namespace.tags) ? namespace.tags : []
+    repo_url,
+    repo_name,
+    agent: namespace.agent ?? null  // overwritten by enforceNamespace at the edge
   };
 }
 

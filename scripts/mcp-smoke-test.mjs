@@ -20,8 +20,8 @@ if (clientId) {
 const steps = [
   { name: "initialize", body: { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "smoke-test", version: "1.0.0" } } } },
   { name: "tools/list", body: { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} } },
-  { name: "memory.write", body: { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "memory.write", arguments: { kind: "fact", content: "smoke test fact", namespace: { scope: "workspace", workspace_id: "smoke-test" } } } } },
-  { name: "memory.search", body: { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "memory.search", arguments: { query: "smoke test fact", namespace: { scope: "workspace", workspace_id: "smoke-test" }, mode: "lexical" } } } }
+  { name: "memory.write", body: { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "memory.write", arguments: { kind: "fact", content: "smoke test fact" } } } },
+  { name: "memory.search", body: { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "memory.search", arguments: { query: "smoke test fact", mode: "lexical" } } } }
 ];
 
 for (const step of steps) {

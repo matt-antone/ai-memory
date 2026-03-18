@@ -57,7 +57,7 @@ Both implement the same interface: `createItem`, `getItem`, `updateItem`, `archi
 
 ## Key patterns
 
-- **Namespace scoping**: All operations use `normalizeNamespace()`. Scoped clients have server-enforced namespace restrictions.
+- **Namespace scoping**: All operations use `normalizeNamespace()`. Namespace is provenance-only (`repo_url`, `repo_name`, `agent`); no per-client access restrictions. `repo_name` is derived from `repo_url`; `agent` is stamped from auth identity at the edge. Callers supply only `repo_url`.
 - **Install identity model**: Setup scripts use one install key as the identity across host registrations; do not assume a separate host-specific agent ID during onboarding/install flows.
 - **Embeddings are optional**: Items without embeddings fall back to lexical search automatically.
 - **Store adapter contract**: Any new storage backend must implement the adapter interface used by `InMemoryStore` and `SupabaseRestStore`.
@@ -75,18 +75,26 @@ When `memory.*` MCP tools are available, use them as a persistent memory loop fo
 
 **Task end**: Write a concise outcome summary with `memory.write`. Link related items with `memory.link` when the relationship aids future retrieval. Use `memory.promote_summary` to distill a detailed item into a durable takeaway.
 
-**Post-task reflection**: After completing a task, reflect on what you learned. If there are new patterns, gotchas, architectural decisions, or reusable insights — save them with `memory.write`. Skip obvious or already-documented things.
+**Post-task reflection**: After finishing a task, reflect on what you learned. Capture new patterns, gotchas, architectural decisions, or reusable insights with `memory.write` (skip obvious or already-documented material).
 
-**Long content**: Use `memory.ingest_document` instead of many individual writes.
+**What to write** — only things that are NOT already in the code or CLAUDE.md:
+- Decisions and their rationale ("we chose X because Y was a problem")
+- Gotchas hit during development ("X returns 401 if you forget Y header")
+- Deployment warnings ("migration Z archives all items — coordinate first")
+- Things that didn't work and why
+- Cross-session context that would otherwise require re-reading everything
+
+**What NOT to write**:
+- Reference docs, architecture summaries, or anything derivable from reading the codebase
+- Do NOT use `memory.ingest_document` for CLAUDE.md or similar files — these inflate token costs without adding unique value and will lose to grep on every code question
+
+**Long content**: Use `memory.ingest_document` for meeting notes, transcripts, incident postmortems, or external specs that have no home in the repo. Don’t ingest files that already live in the repository—the CLI can read them directly and ingesting them just inflates token usage.
 
 **Default namespace** for all operations in this repo:
 ```json
-{
-  "scope": "workspace",
-  "workspace_id": "/Users/matthewantone/CurrentDevProjects/AI/ai-memory"
-}
+{ "repo_url": "https://github.com/matt-antone/ai-memory" }
 ```
-Add `topic` (e.g. `"search"`, `"schema"`, `"auth"`) when the task is focused on one subsystem.
+Global memories (no `repo_url`) are automatically included in repo-scoped searches. `agent` and `repo_name` are set automatically — do not pass them.
 
 **Search tips**:
 - Use `mode: "hybrid"` only when you have a `query_embedding`; otherwise omit `mode` or use `"lexical"`.
@@ -110,7 +118,7 @@ When `memory.*` MCP tools are available, use them as a persistent memory loop on
 - **During work**: Persist stable facts, decisions, discoveries, and bug workarounds with `memory.write`. Skip transient progress chatter.
 - **Task end**: Write a concise outcome summary with `memory.write`. Link related items with `memory.link`. Use `memory.promote_summary` to distill detailed items into durable takeaways.
 - **Post-task reflection**: After completing a task, reflect on what you learned. If there are new patterns, gotchas, architectural decisions, or reusable insights — save them with `memory.write`. Skip obvious or already-documented things.
-- **Long content**: Use `memory.ingest_document` instead of many individual writes.
+- **Long content**: Use `memory.ingest_document` for meeting notes, transcripts, incident postmortems, or external specs that have no home in the repo. Don’t ingest files that already live in the repository—the CLI can read them directly and ingesting them just inflates token usage.
 
 If `memory.*` tools are unavailable, say so briefly and continue the main task.
 ```

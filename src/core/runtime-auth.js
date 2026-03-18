@@ -44,7 +44,6 @@ export function loadRuntimePolicy(env) {
         clientId: entry.client_id,
         secret: entry.secret,
         role: entry.role === "admin" ? "admin" : "service",
-        namespace: normalizeNamespace(entry.namespace ?? {}),
         disabled: entry.disabled === true
       });
     }
@@ -94,8 +93,7 @@ export function authenticateRequest(request, policy) {
       requestId,
       clientId: client.clientId,
       role: client.role,
-      authMode: "client",
-      namespace: client.namespace
+      authMode: "client"
     };
   }
 
@@ -104,8 +102,7 @@ export function authenticateRequest(request, policy) {
       requestId,
       clientId: "admin",
       role: "admin",
-      authMode: "shared-key",
-      namespace: null
+      authMode: "shared-key"
     };
   }
 
@@ -116,8 +113,7 @@ export function authenticateRequest(request, policy) {
         requestId,
         clientId: client.clientId,
         role: client.role,
-        authMode: "client",
-        namespace: client.namespace
+        authMode: "client"
       };
     }
   }
@@ -126,62 +122,24 @@ export function authenticateRequest(request, policy) {
 }
 
 export function enforceNamespace(requestedNamespace, caller) {
-  const rawRequested = requestedNamespace ?? {};
-  const requested = normalizeNamespace(rawRequested);
-  if (caller.role === "admin" || !caller.namespace) {
-    return requested;
+  const raw = requestedNamespace ?? {};
+
+  if (raw.agent != null) {
+    throw authError("agent is set by auth, not caller", {
+      request_id: caller.requestId,
+      client_id: caller.clientId
+    });
+  }
+  if (raw.repo_name != null) {
+    throw authError("repo_name is derived automatically, not caller-set", {
+      request_id: caller.requestId,
+      client_id: caller.clientId
+    });
   }
 
-  const allowed = normalizeNamespace(caller.namespace);
-  for (const key of ["scope", "workspace_id", "agent_id", "topic"]) {
-    const requiredValue = allowed[key];
-    if (requiredValue === null || requiredValue === undefined || requiredValue === "") {
-      continue;
-    }
-    const wasExplicitlySet = rawRequested[key] !== null && rawRequested[key] !== undefined && rawRequested[key] !== "";
-    if (wasExplicitlySet && requested[key] !== requiredValue) {
-      throw authError(`Caller is not allowed to override namespace field: ${key}`, {
-        request_id: caller.requestId,
-        client_id: caller.clientId
-      });
-    }
-    requested[key] = requiredValue;
-  }
-
-  requested.tags = Array.from(new Set([...(allowed.tags ?? []), ...(requested.tags ?? [])]));
-  return requested;
-}
-
-export function assertNamespaceAccess(itemNamespace, caller) {
-  if (caller.role === "admin" || !caller.namespace) {
-    return;
-  }
-
-  const allowed = normalizeNamespace(caller.namespace);
-  const actual = normalizeNamespace(itemNamespace);
-  for (const key of ["scope", "workspace_id", "agent_id", "topic"]) {
-    const requiredValue = allowed[key];
-    if (requiredValue === null || requiredValue === undefined || requiredValue === "") {
-      continue;
-    }
-    if (actual[key] !== requiredValue) {
-      throw authError("Caller is not allowed to access this memory item", {
-        request_id: caller.requestId,
-        client_id: caller.clientId,
-        namespace_field: key
-      });
-    }
-  }
-
-  for (const tag of allowed.tags ?? []) {
-    if (!(actual.tags ?? []).includes(tag)) {
-      throw authError("Caller is not allowed to access this memory item", {
-        request_id: caller.requestId,
-        client_id: caller.clientId,
-        namespace_field: "tags"
-      });
-    }
-  }
+  const ns = normalizeNamespace(raw);  // derives repo_name from repo_url
+  ns.agent = caller.clientId;          // stamp from auth identity
+  return ns;
 }
 
 /**

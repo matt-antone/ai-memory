@@ -14,7 +14,7 @@ export const TOOL_DEFINITIONS = [
         source_type: { type: "string" },
         source_ref: { type: "string" },
         metadata: { type: "object" },
-        namespace: { type: "object" },
+        namespace: { type: "object", description: "Optional. { repo_url: string } to scope to a git repo. Globals (repo_url: null) are always included when a repo is specified. agent and repo_name are set automatically." },
         tags: { type: "array", items: { type: "string" } },
         importance: { type: "number" },
         links: { type: "array", items: { type: "object" } }
@@ -30,7 +30,7 @@ export const TOOL_DEFINITIONS = [
       properties: {
         query: { type: "string" },
         query_embedding: { type: "array", items: { type: "number" } },
-        namespace: { type: "object" },
+        namespace: { type: "object", description: "Optional. { repo_url: string } to scope to a git repo. Globals (repo_url: null) are always included when a repo is specified. agent and repo_name are set automatically." },
         k: { type: "number" },
         filters: { type: "object" },
         mode: { type: "string", enum: ["hybrid", "vector", "lexical"] },
@@ -75,7 +75,7 @@ export const TOOL_DEFINITIONS = [
         source_type: { type: "string" },
         source_ref: { type: "string" },
         metadata: { type: "object" },
-        namespace: { type: "object" },
+        namespace: { type: "object", description: "Optional. { repo_url: string } to scope to a git repo. Globals (repo_url: null) are always included when a repo is specified. agent and repo_name are set automatically." },
         tags: { type: "array", items: { type: "string" } },
         importance: { type: "number" },
         chunk_embeddings: { type: "array", items: { type: "array", items: { type: "number" } } },
@@ -90,8 +90,19 @@ export const TOOL_DEFINITIONS = [
     inputSchema: {
       type: "object",
       properties: {
-        namespace: { type: "object" },
+        namespace: { type: "object", description: "Optional. { repo_url: string } to scope to a git repo. Globals (repo_url: null) are always included when a repo is specified. agent and repo_name are set automatically." },
         limit: { type: "number" }
+      }
+    }
+  },
+  {
+    name: "memory.archive",
+    description: "Archive a memory item so it is excluded from search results.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string" }
       }
     }
   },
@@ -105,7 +116,7 @@ export const TOOL_DEFINITIONS = [
         source_id: { type: "string" },
         content: { type: "string" },
         summary: { type: "string" },
-        namespace: { type: "object" },
+        namespace: { type: "object", description: "Optional. { repo_url: string } to scope to a git repo. Globals (repo_url: null) are always included when a repo is specified. agent and repo_name are set automatically." },
         importance: { type: "number" }
       }
     }

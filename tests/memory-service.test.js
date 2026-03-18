@@ -10,7 +10,7 @@ function createService() {
   });
 }
 
-test("writes and reads memory items with embeddings", async () => {
+test("writes and reads memory items with caller-supplied embeddings", async () => {
   const service = createService();
   const item = await service.writeMemory({
     content: "The project uses Supabase as the memory backend.",
@@ -24,7 +24,63 @@ test("writes and reads memory items with embeddings", async () => {
   assert.equal(loaded.kind, "fact");
   assert.equal(loaded.importance, 0.9);
   assert.ok(Array.isArray(loaded.tags));
-  assert.ok(loaded.metadata.retrieval);
+  assert.equal(loaded.metadata.retrieval, undefined);
+});
+
+test("auto-embeds when embedder is configured and no caller embedding supplied", async () => {
+  const generated = [0.1, 0.2, 0.3];
+  const embedder = async () => generated;
+  const store = new InMemoryStore();
+  const service = new MemoryService(store, {
+    clock: () => new Date("2026-03-14T12:00:00.000Z"),
+    embedder
+  });
+
+  const item = await service.writeMemory({
+    content: "Auto-embedding test content.",
+    kind: "fact"
+  });
+
+  const stored = store.embeddings.get(item.id);
+  assert.deepEqual(stored.embedding, generated);
+  assert.equal(stored.embedding_model, "auto");
+});
+
+test("caller-supplied embedding takes priority over auto-embedder", async () => {
+  const callerEmbedding = [0.9, 0.8];
+  const autoEmbedding = [0.1, 0.2];
+  const store = new InMemoryStore();
+  const service = new MemoryService(store, {
+    clock: () => new Date("2026-03-14T12:00:00.000Z"),
+    embedder: async () => autoEmbedding
+  });
+
+  const item = await service.writeMemory({
+    content: "Caller embedding should win.",
+    kind: "fact",
+    embedding: callerEmbedding,
+    embedding_model: "caller-supplied"
+  });
+
+  const stored = store.embeddings.get(item.id);
+  assert.deepEqual(stored.embedding, callerEmbedding);
+  assert.equal(stored.embedding_model, "caller-supplied");
+});
+
+test("embedder failure is swallowed — item still written without embedding", async () => {
+  const store = new InMemoryStore();
+  const service = new MemoryService(store, {
+    clock: () => new Date("2026-03-14T12:00:00.000Z"),
+    embedder: async () => { throw new Error("embedding API down"); }
+  });
+
+  const item = await service.writeMemory({
+    content: "Resilient even without embeddings.",
+    kind: "fact"
+  });
+
+  assert.ok(item.id);
+  assert.equal(store.embeddings.get(item.id), undefined);
 });
 
 test("archived items are hidden from default search", async () => {
@@ -82,27 +138,36 @@ test("hybrid search boosts vector matches when query embedding is supplied", asy
   assert.ok(results.hits[0].breakdown.vector > results.hits[1].breakdown.vector);
 });
 
-test("namespace filters isolate recalls", async () => {
+test("namespace filters isolate recalls and globals are included in repo-scoped searches", async () => {
   const service = createService();
   await service.writeMemory({
-    content: "Workspace A architecture note",
+    content: "Repo A architecture note",
     kind: "memory",
-    namespace: { scope: "workspace", workspace_id: "A" }
+    namespace: { repo_url: "https://github.com/user/repo-a", agent: "codex" }
   });
   await service.writeMemory({
-    content: "Workspace B architecture note",
+    content: "Repo B architecture note",
     kind: "memory",
-    namespace: { scope: "workspace", workspace_id: "B" }
+    namespace: { repo_url: "https://github.com/user/repo-b", agent: "codex" }
+  });
+  await service.writeMemory({
+    content: "Global architecture note",
+    kind: "memory"
+    // no namespace = global
   });
 
   const results = await service.searchMemory({
     query: "architecture",
-    namespace: { scope: "workspace", workspace_id: "A" },
+    namespace: { repo_url: "https://github.com/user/repo-a" },
     mode: "lexical"
   });
 
-  assert.equal(results.hits.length, 1);
-  assert.match(results.hits[0].item.content, /Workspace A/);
+  // Should return repo-a item AND global item, not repo-b
+  assert.equal(results.hits.length, 2);
+  const contents = results.hits.map((h) => h.item.content);
+  assert.ok(contents.some((c) => /Repo A/.test(c)));
+  assert.ok(contents.some((c) => /Global/.test(c)));
+  assert.ok(!contents.some((c) => /Repo B/.test(c)));
 });
 
 test("graph expansion returns linked context only when requested", async () => {
@@ -207,8 +272,7 @@ test("writeMemory enriches tags and retrieval metadata for broader recall", asyn
   assert.ok(item.tags.includes("runbook"));
   assert.ok(item.tags.includes("supabase"));
   assert.ok(item.tags.includes("deployment"));
-  assert.equal(item.metadata.retrieval.kind, "memory");
-  assert.ok(item.metadata.retrieval.search_hints.includes("operations"));
+  assert.equal(item.metadata.retrieval, undefined);
   assert.ok(item.summary.length > 0);
 });
 
@@ -229,7 +293,7 @@ test("lexical search can match retrieval metadata terms in the in-memory store",
   });
 
   assert.equal(results.hits.length, 1);
-  assert.equal(results.hits[0].item.metadata.retrieval.search_hints.includes("scheduler"), true);
+  assert.equal(results.hits[0].item.metadata.retrieval, undefined);
 });
 
 test("invalid tool payloads are rejected", async () => {
