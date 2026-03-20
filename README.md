@@ -171,23 +171,23 @@ Example client configuration:
 ```json
 [
   {
-    "client_id": "codex-desktop",
+    "client_id": "work-laptop",
     "secret": "replace-me",
     "namespace": {
-      "scope": "workspace",
-      "workspace_id": "/Users/matthewantone/CurrentDevProjects/AI/ai-memory",
-      "tags": ["shared"]
+      "repo_url": "https://github.com/your-org/your-repo"
     }
   }
 ]
 ```
+
+Supply only `repo_url` in the namespace — the server derives `repo_name` and stamps `agent` from auth identity automatically. Global memories (no `repo_url`) are automatically included in every repo-scoped search.
 
 Scoped clients should send:
 
 - `x-memory-key: <client secret>`
 - `x-memory-client-id: <client id>`
 
-Admin callers may still use `x-memory-key` or `Authorization: Bearer <key>`.
+Admin callers may use `x-memory-key` or `Authorization: Bearer <key>`. Codex uses `bearer_token_env_var` (sends `Authorization: Bearer`), while Claude Code, Cursor, and OpenClaw send the key as `x-memory-key` directly — the server accepts both.
 
 ## Supabase setup checklist
 
