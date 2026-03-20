@@ -1,11 +1,11 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import crypto from "node:crypto";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { spawnSync } from "node:child_process";
-import { resolveChoice } from "../src/utils/prompt.js";
 import {
   getCurrentAgent,
   readEnvFile,
@@ -14,7 +14,6 @@ import {
   setCurrentAgent,
   upsertAgent,
   validateAgentId,
-  validateClientId,
   writeUserConfig
 } from "../src/utils/user-config.js";
 
@@ -140,11 +139,8 @@ try {
     run("supabase", ["functions", "deploy", "memory-mcp", "--project-ref", projectRef]);
   }
 
-  const hostsRaw = await ask(
-    "Which hosts should be configured? (comma-separated: claude, codex, cursor, openclaw, none)",
-    "claude,codex,cursor"
-  );
-  const hosts = hostsRaw.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+  const hosts = installResolution.hosts;
+  console.log(`\nConfiguring MCP for: ${hosts.length ? hosts.join(", ") : "(none)"}`);
   const setupEnv = {
     ...process.env,
     MEMORY_MCP_URL: endpoint,
@@ -153,9 +149,6 @@ try {
   };
 
   for (const host of hosts) {
-    if (host === "none") {
-      break;
-    }
     if (host === "claude") {
       run("npm", ["run", "setup:claude"], { env: setupEnv, interactive: true });
     } else if (host === "codex") {
@@ -215,33 +208,45 @@ try {
   rl?.close();
 }
 
-async function resolveInstallIdentity(config) {
+function defaultInstallKey(config) {
   const current = getCurrentAgent(config);
-  const fallbackInstallKey = current?.agentId || process.env.AI_MEMORY_INSTALL_KEY || "personal-codex";
-  const installKey = await ask("Install key", fallbackInstallKey);
-  validateAgentId(installKey);
+  if (current?.agentId) return current.agentId;
+  if (process.env.AI_MEMORY_INSTALL_KEY) return process.env.AI_MEMORY_INSTALL_KEY;
+  return os.hostname().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "my-machine";
+}
 
-  const existing = config.installs?.[installKey];
-  const authMode = await choose(
-    `Auth mode for install key '${installKey}'`,
-    [
-      { key: "1", label: "Shared key", value: "shared" },
-      { key: "2", label: "Scoped client", value: "scoped" }
-    ],
-    existing?.authMode === "shared" ? "1" : "2"
-  );
-  const clientId = authMode === "scoped"
-    ? await ask("Scoped client ID", existing?.clientId || `${installKey}`)
-    : "";
-  if (authMode === "scoped") {
-    validateClientId(clientId);
+async function resolveInstallIdentity(config) {
+  console.log("\n  Install key: a unique name for this machine or environment (e.g. \"work-laptop\", \"home-server\").");
+  console.log("  This is NOT the agent type (Claude, Codex, etc.) — the agent is configured separately.\n");
+
+  let installKey;
+  while (true) {
+    installKey = await ask("Install key", defaultInstallKey(config));
+    validateAgentId(installKey);
+    if (config.installs?.[installKey]) {
+      const overwrite = await confirm(`Install key '${installKey}' already exists. Overwrite it?`, false);
+      if (overwrite) break;
+    } else {
+      break;
+    }
   }
 
+  const existing = config.installs?.[installKey];
+  const authMode = "scoped";
+  const clientId = installKey;
+
+  const hostsRaw = await ask(
+    "Which agent hosts are on this machine? (comma-separated: claude, codex, cursor, openclaw)",
+    existing?.hosts?.join(",") || "claude,codex"
+  );
+  const hosts = hostsRaw.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+
   return {
-    config: upsertAgent(config, installKey, { authMode, clientId }),
+    config: upsertAgent(config, installKey, { authMode, clientId, hosts }),
     installKey,
     authMode,
-    clientId
+    clientId,
+    hosts
   };
 }
 
@@ -331,15 +336,6 @@ async function confirm(label, defaultYes = true) {
     return defaultYes;
   }
   return value === "y" || value === "yes";
-}
-
-async function choose(label, options, fallbackKey) {
-  console.log(`${label}:`);
-  for (const option of options) {
-    console.log(`  ${option.key}. ${option.label}`);
-  }
-  const selected = await ask("Choose an option", fallbackKey);
-  return resolveChoice(options, selected, fallbackKey).value;
 }
 
 function run(command, args, options = {}) {

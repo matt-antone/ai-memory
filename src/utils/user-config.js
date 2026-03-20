@@ -359,7 +359,8 @@ function defaultInstallRecord() {
     authMode: "scoped",
     clientId: "",
     serverName: "",
-    namespaces: []
+    namespaces: [],
+    hosts: []
   };
 }
 
@@ -368,11 +369,15 @@ function normalizeInstall(input = {}) {
   const clientId = authMode === "scoped"
     ? String(input.clientId || "").trim()
     : "";
+  const hosts = Array.isArray(input.hosts)
+    ? [...new Set(input.hosts.map((h) => String(h).trim().toLowerCase()).filter(Boolean))]
+    : [];
   return {
     authMode,
     clientId,
     serverName: String(input.serverName || "").trim(),
-    namespaces: dedupeNamespaces(Array.isArray(input.namespaces) ? input.namespaces : [])
+    namespaces: dedupeNamespaces(Array.isArray(input.namespaces) ? input.namespaces : []),
+    hosts
   };
 }
 

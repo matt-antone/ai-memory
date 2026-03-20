@@ -13,6 +13,7 @@ Use `ai-memory` as the persistent memory and recall system for work in this repo
 - Use `memory` as the general-purpose fallback when the item is durable but not best described as a `fact` or `summary`.
 - Do not guess enum values such as `note`; the MCP schema rejects unsupported `kind` values.
 
+- `Session start:` Call `memory.list_recent` twice — once with `namespace: { repo_url: "https://github.com/matt-antone/ai-memory" }` for repo context, and once with no namespace for global context. Global items are included in repo-scoped searches but NOT in repo-scoped `list_recent`.
 - `Task start:` If `memory.*` tools are available, call `memory.search` with a query about the user, repo, project, or topic. Review the most relevant hits and use them to ground your work before continuing.
 - `Task start:` Start with a repo-scoped query using `namespace: { repo_url: "https://github.com/matt-antone/ai-memory" }` when the task is about this repo. If that returns no hits, follow with `memory.list_recent` in the same namespace and then a second targeted `memory.search`.
 - `During task:` When you uncover stable facts, decisions, preferences, patterns, or reusable implementation notes, store them explicitly with `memory.write`.

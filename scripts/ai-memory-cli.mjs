@@ -125,10 +125,29 @@ async function runInit() {
   const accessKey = process.env.AI_MEMORY_INIT_ACCESS_KEY
     || await ask("Memory MCP access key", currentEnv.MEMORY_MCP_ACCESS_KEY || process.env.MEMORY_MCP_ACCESS_KEY || "");
 
-  let installKey = process.env.AI_MEMORY_INIT_INSTALL_KEY || process.env.AI_MEMORY_INIT_AGENT_ID || "";
-  if (!installKey) {
+  const envInstallKey = process.env.AI_MEMORY_INIT_INSTALL_KEY || process.env.AI_MEMORY_INIT_AGENT_ID || "";
+  let installKey;
+  if (envInstallKey) {
+    installKey = envInstallKey;
+    if (config.installs?.[installKey]) {
+      console.warn(`Warning: install key '${installKey}' already exists and will be overwritten.`);
+    }
+  } else {
     const existingCurrent = getCurrentAgent(config);
-    installKey = await ask("Install key", existingCurrent?.agentId || "personal-codex");
+    const hostnameDefault = os.hostname().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "my-machine";
+    const fallback = existingCurrent?.agentId || hostnameDefault;
+    console.log("\n  Install key: a unique name for this machine or environment (e.g. \"work-laptop\", \"home-server\").");
+    console.log("  This is NOT the agent type (Claude, Codex, etc.) — the agent is configured separately.\n");
+    while (true) {
+      installKey = await ask("Install key", fallback);
+      validateAgentId(installKey);
+      if (config.installs?.[installKey]) {
+        const overwrite = await confirm(`Install key '${installKey}' already exists. Overwrite it?`, false);
+        if (overwrite) break;
+      } else {
+        break;
+      }
+    }
   }
   validateAgentId(installKey);
 
@@ -139,16 +158,7 @@ async function runInit() {
   }
   authMode = authMode === "shared" ? "shared" : "scoped";
 
-  let clientId = process.env.AI_MEMORY_INIT_CLIENT_ID || "";
-  if (authMode === "scoped" && !clientId) {
-    const existingCurrent = getCurrentAgent(config);
-    clientId = await ask("Scoped client ID", existingCurrent?.clientId || process.env.MEMORY_MCP_CLIENT_ID || installKey);
-  }
-  if (authMode === "scoped") {
-    validateClientId(clientId);
-  } else {
-    clientId = "";
-  }
+  const clientId = authMode === "scoped" ? (process.env.AI_MEMORY_INIT_CLIENT_ID || installKey) : "";
 
   config = {
     ...config,
@@ -192,6 +202,8 @@ async function runInstall(type) {
 
   if (type === "claude") {
     const defaultServerName = getAgentServerName(nextConfig, selection.agentId);
+    console.log("\n  MCP server name: the label for this server in Claude's config (e.g. \"ai-memory\").");
+    console.log("  This is what appears as the key under mcpServers in .mcp.json or ~/.claude.json.\n");
     const serverName = (process.env.AI_MEMORY_SERVER_NAME
       || await ask("Claude MCP server name", defaultServerName)).trim();
     if (!serverName) {

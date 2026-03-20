@@ -16,6 +16,14 @@ Use `ai-memory` as the durable memory layer for this repository when `memory.*` 
 
 ## Required workflow
 
+### 0. Warm up at session start
+
+When starting a new session (before any specific task):
+
+1. Call `memory.list_recent` with `namespace: { repo_url: "https://github.com/matt-antone/ai-memory" }` to surface repo-specific context.
+2. Call `memory.list_recent` with no namespace to surface global context. Global items are included in repo-scoped searches but NOT in repo-scoped `list_recent` — you must call both.
+3. Skim the results to orient yourself before diving into the task.
+
 ### 1. Ground the task at the start
 
 At the start of a significant task:
@@ -27,7 +35,6 @@ At the start of a significant task:
 Suggested query patterns:
 
 - `"ai-memory repository overview"`
-- `"memory namespaces workspace_id ai-memory"`
 - `"user preferences matthewantone"`
 - `"bug workaround supabase memory search"`
 
@@ -53,6 +60,10 @@ After a significant task:
 2. Link it to supporting items with `memory.link` when relationships matter.
 3. If a detailed source item should also have a durable takeaway, use `memory.promote_summary`.
 
+### 4. Post-task reflection
+
+After finishing the task, reflect on what you learned. If there are new patterns, gotchas, architectural decisions, or reusable insights, save them with `memory.write`. Skip anything obvious or already documented in the codebase.
+
 ## Namespace defaults
 
 Use a consistent namespace unless the task clearly needs a narrower scope.
@@ -60,23 +71,17 @@ Use a consistent namespace unless the task clearly needs a narrower scope.
 Recommended default for this repo:
 
 ```json
-{
-  "scope": "workspace",
-  "workspace_id": "/Users/matthewantone/CurrentDevProjects/AI/ai-memory",
-  "topic": null,
-  "agent_id": null,
-  "tags": []
-}
+{ "repo_url": "https://github.com/matt-antone/ai-memory" }
 ```
 
-Refine `topic` and `tags` for focused work such as `search`, `supabase`, `schema`, or `skill`.
+Do not pass `agent` or `repo_name` — they are set automatically by the server from auth identity.
+
+Global memories (no `repo_url`) are always included in repo-scoped searches, so user preferences and cross-repo facts are automatically surfaced.
 
 Guidelines:
 
-- Use `scope: "workspace"` for repo-specific knowledge.
-- Set `workspace_id: "ai-memory"` for work in this repository.
-- Set `topic` when the task centers on one feature, bug, or subsystem.
-- Use `agent_id` only when the memory should be scoped to a specific agent workflow.
+- Pass `repo_url` for all repo-specific work in this repository.
+- Omit `repo_url` only for truly global (cross-repo) user preferences or facts.
 - Reuse the same namespace across related writes so `memory.search` and `memory.list_recent` stay coherent.
 
 ## Tool guidance
@@ -145,6 +150,15 @@ Use to review recent activity in the current namespace.
 
 ## Minimal execution templates
 
+Session start (warm up) — run both:
+
+```json
+{ "tool": "memory.list_recent", "arguments": { "namespace": { "repo_url": "https://github.com/matt-antone/ai-memory" }, "limit": 10 } }
+```
+```json
+{ "tool": "memory.list_recent", "arguments": { "limit": 10 } }
+```
+
 Task start:
 
 ```json
@@ -152,10 +166,7 @@ Task start:
   "tool": "memory.search",
   "arguments": {
     "query": "ai-memory repository overview",
-    "namespace": {
-      "scope": "workspace",
-      "workspace_id": "/Users/matthewantone/CurrentDevProjects/AI/ai-memory"
-    }
+    "namespace": { "repo_url": "https://github.com/matt-antone/ai-memory" }
   }
 }
 ```
@@ -169,11 +180,7 @@ Stable fact or decision:
     "kind": "fact",
     "content": "The ai-memory repo exposes memory.write, memory.search, memory.get, memory.link, memory.ingest_document, memory.list_recent, and memory.promote_summary through the MCP edge function.",
     "summary": "Implemented MCP memory tool surface",
-    "namespace": {
-      "scope": "workspace",
-      "workspace_id": "/Users/matthewantone/CurrentDevProjects/AI/ai-memory",
-      "topic": "mcp"
-    },
+    "namespace": { "repo_url": "https://github.com/matt-antone/ai-memory" },
     "tags": ["tools", "mcp"],
     "importance": 0.8
   }
@@ -187,13 +194,9 @@ Task-end summary:
   "tool": "memory.write",
   "arguments": {
     "kind": "summary",
-    "content": "Added a repo-local ai-memory skill that requires task-start search, consistent workspace namespaces, and durable persistence of reusable discoveries and completed-task summaries.",
+    "content": "Added a repo-local ai-memory skill that requires task-start search, consistent repo_url namespaces, and durable persistence of reusable discoveries and completed-task summaries.",
     "summary": "Created ai-memory repo skill",
-    "namespace": {
-      "scope": "workspace",
-      "workspace_id": "/Users/matthewantone/CurrentDevProjects/AI/ai-memory",
-      "topic": "skill"
-    },
+    "namespace": { "repo_url": "https://github.com/matt-antone/ai-memory" },
     "tags": ["skill", "memory"],
     "importance": 0.85
   }
