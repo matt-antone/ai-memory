@@ -99,9 +99,7 @@ Example `MEMORY_MCP_CLIENTS_JSON` entry:
     "client_id": "codex-desktop",
     "secret": "replace-me",
     "namespace": {
-      "scope": "workspace",
-      "workspace_id": "/absolute/path/to/project",
-      "tags": ["shared"]
+      "repo_url": "https://github.com/your-org/your-repo"
     }
   }
 ]
@@ -133,6 +131,8 @@ bearer_token_env_var = "MEMORY_MCP_ACCESS_KEY"
 [mcp_servers.ai-memory.http_headers]
 x-memory-key = "MCP_BEARER_TOKEN"
 ```
+
+**Auth note**: Codex uses `bearer_token_env_var` to send your key as `Authorization: Bearer <value>`, while Claude Code, Cursor, and OpenClaw send it as the `x-memory-key` header directly. The server accepts both paths, so either works — this is a Codex config format difference, not a different auth strategy.
 
 If you are using scoped clients instead of a shared key, configure the host to send both:
 
@@ -310,23 +310,21 @@ Use `ai_memory` as the MCP server key for OpenClaw JSON config as well (alphanum
 
 ## How to scope memory safely
 
-Use namespaces consistently. For most agent integrations, a workspace namespace is the best default.
+Use namespaces consistently. Supply only `repo_url` — the server derives `repo_name` and stamps `agent` from auth identity automatically.
 
 Example:
 
 ```json
-{
-  "scope": "workspace",
-  "workspace_id": "/absolute/path/to/project",
-  "topic": "optional-subarea"
-}
+{ "repo_url": "https://github.com/your-org/your-repo" }
 ```
+
+Global memories (no `repo_url`) are automatically included in every repo-scoped search, so cross-repo user preferences and facts surface without any extra work.
 
 Recommended patterns:
 
-- one workspace namespace per repo or product
-- add `topic` when you want durable subdivision inside a workspace
-- use tags for looser grouping, not as the primary isolation boundary
+- pass `repo_url` for all repo-specific memories
+- omit `repo_url` for truly global (cross-repo) user preferences or facts
+- do not pass `agent` or `repo_name` — they are set server-side
 
 If you configure a scoped client with a fixed namespace, the server will enforce that boundary even if the caller sends something broader.
 
