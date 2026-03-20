@@ -154,7 +154,14 @@ For Codex and Cursor in this repo, you can also run `npm run setup:codex` and `n
 For OpenClaw in this repo, you can also run `npm run setup:openclaw`.
 Each setup command uses the current install key from `~/.ai-config/ai-memory/config.json`, then prompts for project-local or global host scope and warns before updating an existing `ai-memory` registration.
 Important for Cursor/OpenClaw JSON MCP configs: `mcpServers` keys must use only letters, numbers, and underscores. Use `ai_memory` (not `ai-memory`) for the server key, or the host may fail to load the MCP definition.
-Cursor project installs now write `${env:...}` header references and load `${workspaceFolder}/.env` explicitly, because Cursor does not expand bare `${VAR}` placeholders from repo `.env` files in MCP configs.
+
+**Cursor (recommended):** `ai-memory install cursor` registers a **stdio** MCP server that runs `ai-memory mcp` locally. Cursor spawns that process and talks MCP over stdin/stdout; Supabase credentials and `MEMORY_MCP_ACCESS_KEY` are passed via `mcp.json` `env` and your workspace `.env` (same `${env:...}` style as before). This avoids remote HTTP MCP flakiness in Cursor. Requires `ai-memory` on your PATH (`ai-memory self-install`) and `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` in the env file the MCP entry references. Optional: `OPENAI_API_KEY` for embeddings in the local process (otherwise lexical search only).
+
+To keep the **previous HTTP** Cursor setup (edge URL + headers), set `AI_MEMORY_CURSOR_TRANSPORT=http` when running `ai-memory install cursor`.
+
+Codex, Claude, and OpenClaw installs are unchanged (HTTP MCP to the edge URL).
+
+**CLI fallback for agents:** If MCP tools are missing or broken, the globally installed `ai-memory` CLI is the supported fallback (see `npm run ai-memory -- --help` after `self-install`). Same backend and auth env vars apply.
 Use `npm run uninstall` to detect project-local and global installs across Codex, Cursor, Claude, and OpenClaw, then remove exactly one selected target per run. `npm run uninstall:local` remains as a compatibility alias to the same flow. These commands do not remove the Supabase database, deployed edge function, secrets, or local `.env` files.
 
 ## Runtime auth model

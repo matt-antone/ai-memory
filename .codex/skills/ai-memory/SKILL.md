@@ -7,6 +7,8 @@ description: Use ai-memory as the persistent memory and recall system for this r
 
 Use `ai-memory` as the durable memory layer for this repository when `memory.*` tools are available.
 
+If MCP tools are not available or fail, fall back to the **`ai-memory` CLI** in a terminal (after `ai-memory self-install`), using the same credentials as MCP. Valid `memory.write.kind` values: `memory`, `document`, `chunk`, `summary`, `fact` only.
+
 ## Purpose
 
 - Ground work in prior repo and user context before making decisions.

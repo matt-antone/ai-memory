@@ -31,6 +31,12 @@ Use `ai-memory` as the persistent memory and recall system for work in this repo
 - When discussing setup/config in this repo, use **install key** terminology (single identity used across hosts) instead of introducing a separate host-specific agent identity.
 - If `ai-memory` is unavailable, say so briefly and continue the main task when possible.
 
+### When MCP tools are missing or unreliable
+
+- **Cursor** should use stdio MCP via `ai-memory install cursor` (runs `ai-memory mcp`). If tools still do not appear, use the **`ai-memory` CLI** from a terminal as a fallback when the user has it installed (`ai-memory self-install`), and document what you attempted in the session.
+- **Other hosts** use HTTP MCP to the edge; if that fails, same CLI fallback applies where shell access exists.
+- Valid `memory.write.kind` values remain: `memory`, `document`, `chunk`, `summary`, `fact` — do not invent other labels.
+
 ### Suggested patterns
 
 - Use `memory.write` for:

@@ -180,6 +180,36 @@ export function getRequestId(request) {
     ?? createId("req");
 }
 
+/**
+ * Build a minimal Request carrying MCP auth headers from a process-style env map.
+ * Used by the local stdio MCP server (no HTTP request object).
+ * @param {Record<string, string | undefined>} env
+ */
+export function createAuthRequestFromEnv(env) {
+  const key = String(env.MEMORY_MCP_ACCESS_KEY ?? "").trim();
+  const headers = new Headers();
+  if (key) {
+    headers.set("x-memory-key", key);
+  }
+  const clientId = String(env.MEMORY_MCP_CLIENT_ID ?? "").trim();
+  if (clientId) {
+    headers.set("x-memory-client-id", clientId);
+  }
+  return new Request("https://memory.stdio.local/", { headers });
+}
+
+/**
+ * Wrap a plain env object (e.g. `process.env`) for `loadRuntimePolicy`.
+ */
+export function nodeEnvToGetter(env) {
+  return {
+    get(key) {
+      const v = env[key];
+      return v === undefined || v === null ? null : String(v);
+    }
+  };
+}
+
 export function getRequestRateLimitKey(request) {
   // Prefer platform-set headers (not spoofable by clients).
   const platformIp = request.headers.get("cf-connecting-ip")

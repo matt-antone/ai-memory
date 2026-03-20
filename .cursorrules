@@ -27,4 +27,4 @@ Do not pass `agent` or `repo_name` — set automatically. Global items (no `repo
 
 **kind values:** `fact`, `summary`, `memory`, `document`, `chunk` — do not guess other values.
 
-**If `memory.*` tools are unavailable:** say so briefly and continue.
+**If `memory.*` tools are unavailable:** say so briefly and continue. **Fallback:** use the `ai-memory` CLI from the integrated terminal when installed (`ai-memory self-install` puts it on PATH). Cursor’s managed install uses **stdio** (`ai-memory mcp`); if the MCP panel shows errors, run `ai-memory doctor` and ensure `.env` includes `MEMORY_MCP_ACCESS_KEY`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`.

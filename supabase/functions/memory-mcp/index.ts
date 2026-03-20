@@ -3,22 +3,12 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
-import { asToolErrorResult, asToolResult } from "../../../src/core/mcp-format.js";
 import { createOpenAIEmbedder, createSupabaseEmbedder } from "../../../src/core/embedders.js";
 import { loadRuntimePolicy, sanitizeRuntimePolicy, authenticateRequest, enforceNamespace, InMemoryRateLimiter, getRequestId, getRequestRateLimitKey } from "../../../src/core/runtime-auth.js";
 import { errorPayload, normalizeError, upstreamError, validationError } from "../../../src/core/runtime-errors.js";
 import { MemoryService } from "../../../src/core/service.js";
 import { SupabaseRestStore } from "../../../src/storage/supabase-rest-store.js";
-import {
-  memoryArchiveSchema,
-  memoryGetSchema,
-  memoryIngestSchema,
-  memoryLinkSchema,
-  memoryListRecentSchema,
-  memoryPromoteSchema,
-  memorySearchSchema,
-  memoryWriteSchema
-} from "../../../src/core/mcp-security.js";
+import { registerMemoryMcpTools } from "../../../src/mcp/memory-mcp-register.js";
 
 const runtimePolicy = loadRuntimePolicy(Deno.env);
 const rateLimiter = new InMemoryRateLimiter(runtimePolicy.rateLimit);
@@ -57,112 +47,13 @@ function createMemoryServer(requestContext: Record<string, unknown>) {
     version: "0.1.0"
   });
 
-  registerTool(server, service, requestContext, "memory.write", {
-    title: "Write Memory",
-    description: "Persist a durable memory item with optional embedding and links.",
-    schema: memoryWriteSchema
-  }, async (args, context) => {
-    const namespace = enforceNamespace(args.namespace, context);
-    return service.writeMemory({ ...args, namespace }, context);
-  });
-
-  registerTool(server, service, requestContext, "memory.search", {
-    title: "Search Memory",
-    description: "Search memories using lexical or hybrid ranking with optional graph expansion.",
-    schema: memorySearchSchema
-  }, async (args, context) => {
-    const namespace = enforceNamespace(args.namespace, context);
-    return service.searchMemory({ ...args, namespace }, context);
-  });
-
-  registerTool(server, service, requestContext, "memory.get", {
-    title: "Get Memory",
-    description: "Fetch one memory item by id.",
-    schema: memoryGetSchema
-  }, async (args, context) => service.getMemory(args, context));
-
-  registerTool(server, service, requestContext, "memory.link", {
-    title: "Link Memory",
-    description: "Create a typed relationship between two memory items.",
-    schema: memoryLinkSchema
-  }, async (args, context) => service.linkMemory(args, context));
-
-  registerTool(server, service, requestContext, "memory.ingest_document", {
-    title: "Ingest Document",
-    description: "Store a document and deterministic chunks with optional chunk embeddings.",
-    schema: memoryIngestSchema
-  }, async (args, context) => {
-    const namespace = enforceNamespace(args.namespace, context);
-    return service.ingestDocument({ ...args, namespace }, context);
-  });
-
-  registerTool(server, service, requestContext, "memory.list_recent", {
-    title: "List Recent Memory",
-    description: "List recently created or recalled memory items.",
-    schema: memoryListRecentSchema
-  }, async (args, context) => {
-    const namespace = enforceNamespace(args.namespace, context);
-    return service.listRecent({ ...args, namespace }, context);
-  });
-
-  registerTool(server, service, requestContext, "memory.archive", {
-    title: "Archive Memory",
-    description: "Archive a memory item so it is excluded from search results.",
-    schema: memoryArchiveSchema
-  }, async (args, context) => service.archiveMemory(args, context));
-
-  registerTool(server, service, requestContext, "memory.promote_summary", {
-    title: "Promote Summary",
-    description: "Promote a source memory item into a summary item linked back to its origin.",
-    schema: memoryPromoteSchema
-  }, async (args, context) => {
-    if (args.namespace) {
-      args = { ...args, namespace: enforceNamespace(args.namespace, context) };
-    }
-    return service.promoteSummary(args, context);
+  registerMemoryMcpTools(server, {
+    service,
+    requestContext,
+    log: (level, payload) => logRequest(level, payload)
   });
 
   return server;
-}
-
-function registerTool(server, service, requestContext, name, definition, handler) {
-  server.registerTool(
-    name,
-    {
-      title: definition.title,
-      description: definition.description,
-      inputSchema: definition.schema.shape
-    },
-    async (args) => {
-      const startedAt = Date.now();
-      try {
-        const parsed = definition.schema.parse(args);
-        const result = await handler(parsed, requestContext, service);
-        logRequest("info", {
-          event: "memory_mcp.tool",
-          tool: name,
-          request_id: requestContext.requestId,
-          client_id: requestContext.clientId,
-          duration_ms: Date.now() - startedAt,
-          result_type: Array.isArray(result) ? "array" : typeof result
-        });
-        return asToolResult(result);
-      } catch (error) {
-        const normalized = normalizeError(error, requestContext.requestId);
-        logRequest("error", {
-          event: "memory_mcp.tool_error",
-          tool: name,
-          request_id: requestContext.requestId,
-          client_id: requestContext.clientId,
-          duration_ms: Date.now() - startedAt,
-          error_category: normalized.category,
-          error_code: normalized.code,
-          message: normalized.message
-        });
-        return asToolErrorResult(errorPayload(normalized).error);
-      }
-    }
-  );
 }
 
 Deno.serve(async (request: Request) => {
