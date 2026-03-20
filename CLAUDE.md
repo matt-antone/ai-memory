@@ -104,7 +104,7 @@ Global memories (no `repo_url`) are automatically included in repo-scoped search
 - If first search returns nothing, follow up with `memory.list_recent` in the same namespace.
 - `list_recent` with a repo namespace does NOT return global items — always run a separate `list_recent` with no namespace to surface global context.
 
-**If `memory.*` tools are unavailable**: say so briefly and continue the main task.
+**If `memory.*` tools are unavailable**: say so briefly and continue the main task. **Fallback:** use the `ai-memory` CLI in a shell when the user has installed it globally (`ai-memory self-install`). Cursor uses local **stdio** MCP (`ai-memory mcp`) by default after `ai-memory install cursor`; HTTP to the edge remains available for other hosts or if `AI_MEMORY_CURSOR_TRANSPORT=http` is set during Cursor install.
 
 ## Setup
 
@@ -124,7 +124,7 @@ When `memory.*` MCP tools are available, use them as a persistent memory loop on
 - **Post-task reflection**: After completing a task, reflect on what you learned. If there are new patterns, gotchas, architectural decisions, or reusable insights — save them with `memory.write`. Skip obvious or already-documented things.
 - **Long content**: Use `memory.ingest_document` for meeting notes, transcripts, incident postmortems, or external specs that have no home in the repo. Don’t ingest files that already live in the repository—the CLI can read them directly and ingesting them just inflates token usage.
 
-If `memory.*` tools are unavailable, say so briefly and continue the main task.
+If `memory.*` tools are unavailable, say so briefly and continue the main task. **Fallback:** use the `ai-memory` CLI in a shell when installed (`ai-memory self-install`). Cursor may use local stdio MCP (`ai-memory mcp`) after `ai-memory install cursor`.
 ```
 
 ### Targets

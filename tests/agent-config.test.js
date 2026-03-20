@@ -180,6 +180,36 @@ test("json upsert can remove a legacy Cursor hyphenated key while writing the no
   assert.equal(parsed.mcpServers.ai_memory.url, "https://example.test/memory");
 });
 
+test("json upsert stdio Cursor config shape", () => {
+  const next = upsertJsonServerConfig("", "ai_memory", "https://ignored.test", "client-a", {
+    envStyle: "cursor",
+    envFile: "${workspaceFolder}/.env",
+    transport: "stdio"
+  });
+  const parsed = JSON.parse(next);
+
+  assert.equal(parsed.mcpServers.ai_memory.type, "stdio");
+  assert.equal(parsed.mcpServers.ai_memory.command, "ai-memory");
+  assert.deepEqual(parsed.mcpServers.ai_memory.args, ["mcp"]);
+  assert.equal(parsed.mcpServers.ai_memory.env.MEMORY_MCP_CLIENT_ID, "client-a");
+  assert.equal(parsed.mcpServers.ai_memory.env.MEMORY_MCP_ACCESS_KEY, "${env:MEMORY_MCP_ACCESS_KEY}");
+});
+
+test("json inspect recognizes managed ai-memory stdio entry", () => {
+  const raw = JSON.stringify({
+    mcpServers: {
+      ai_memory: {
+        type: "stdio",
+        command: "ai-memory",
+        args: ["mcp"],
+        env: { MEMORY_MCP_ACCESS_KEY: "${env:MEMORY_MCP_ACCESS_KEY}" }
+      }
+    }
+  }, null, 2);
+
+  assert.deepEqual(inspectJsonServerConfig(raw, "ai_memory"), { exists: true, managed: true });
+});
+
 test("golden openclaw upsert preserves gateway settings and rewrites ai-memory entry", () => {
   const actual = upsertJsonServerConfig(
     readFixture("openclaw-input.json"),

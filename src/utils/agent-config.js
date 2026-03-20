@@ -26,6 +26,57 @@ function createJsonServerConfig(url, clientId, options = {}) {
   return config;
 }
 
+function createStdioServerConfig(clientId, options = {}) {
+  const {
+    envStyle = "plain",
+    accessKey = "",
+    command = "ai-memory",
+    args = ["mcp"]
+  } = options;
+  const envRef = (name) => envStyle === "cursor" ? `\${env:${name}}` : `\${${name}}`;
+  const env = {
+    MEMORY_MCP_ACCESS_KEY: accessKey || envRef("MEMORY_MCP_ACCESS_KEY"),
+    SUPABASE_URL: envRef("SUPABASE_URL"),
+    SUPABASE_SERVICE_ROLE_KEY: envRef("SUPABASE_SERVICE_ROLE_KEY"),
+    OPENAI_API_KEY: envRef("OPENAI_API_KEY"),
+    OPENAI_EMBEDDING_MODEL: envRef("OPENAI_EMBEDDING_MODEL")
+  };
+  if (clientId) {
+    env.MEMORY_MCP_CLIENT_ID = clientId;
+  } else {
+    env.MEMORY_MCP_CLIENT_ID = envRef("MEMORY_MCP_CLIENT_ID");
+  }
+
+  const config = {
+    type: "stdio",
+    command,
+    args: [...args],
+    env
+  };
+
+  if (options.envFile) {
+    config.envFile = options.envFile;
+  }
+
+  return config;
+}
+
+function jsonServerLooksManagedStdio(entry) {
+  if (!entry || entry.type !== "stdio") {
+    return false;
+  }
+  const cmd = String(entry.command || "");
+  const args = Array.isArray(entry.args) ? entry.args : [];
+  const okCmd = cmd === "ai-memory" || cmd.endsWith("ai-memory-cli.mjs");
+  const okArgs = args.length > 0 && args[0] === "mcp";
+  const env = ensureObject(entry.env, {});
+  const key = env.MEMORY_MCP_ACCESS_KEY;
+  const usesCursorEnv = key === "${env:MEMORY_MCP_ACCESS_KEY}";
+  const usesPlainEnv = key === "${MEMORY_MCP_ACCESS_KEY}";
+  const usesLiteralKey = typeof key === "string" && key.length > 0 && !usesCursorEnv && !usesPlainEnv;
+  return okCmd && okArgs && (usesCursorEnv || usesPlainEnv || usesLiteralKey);
+}
+
 function ensureObject(value, fallback) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return fallback;
@@ -66,9 +117,11 @@ function jsonServerLooksManaged(entry) {
       || typeof headers["x-memory-client-id"] === "string"
     );
 
-  return entry.type === "http"
+  const httpManaged = entry.type === "http"
     && typeof entry.url === "string"
     && (usesLegacyEnvRefs || usesCursorEnvRefs);
+
+  return httpManaged || jsonServerLooksManagedStdio(entry);
 }
 
 export function inspectJsonServerConfig(content, serverName) {
@@ -88,7 +141,12 @@ export function upsertJsonServerConfig(content, serverName, url, clientId = "", 
       delete data.mcpServers[alias];
     }
   }
-  data.mcpServers[serverName] = createJsonServerConfig(url, clientId, options);
+  const transport = options.transport ?? "http";
+  if (transport === "stdio") {
+    data.mcpServers[serverName] = createStdioServerConfig(clientId, options);
+  } else {
+    data.mcpServers[serverName] = createJsonServerConfig(url, clientId, options);
+  }
   return `${JSON.stringify(data, null, 2)}\n`;
 }
 

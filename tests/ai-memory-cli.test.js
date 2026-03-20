@@ -32,7 +32,8 @@ test("cli init creates centralized config and env with install-centric shape", (
     authMode: "scoped",
     clientId: "client-a",
     serverName: "",
-    namespaces: []
+    namespaces: [],
+    hosts: []
   });
   assert.equal(Boolean(config.clients), false);
   assert.match(envFile, /MEMORY_MCP_ACCESS_KEY="secret-123"/);
@@ -116,8 +117,11 @@ test("cli install cursor normalizes the Cursor MCP server key to underscores", (
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(fs.readFileSync(cursorPath, "utf8"));
 
-  assert.equal(parsed.mcpServers.ai_memory.url, "https://example.test/memory");
-  assert.equal(parsed.mcpServers.ai_memory.headers["x-memory-client-id"], "client-a");
+  assert.equal(parsed.mcpServers.ai_memory.type, "stdio");
+  assert.equal(parsed.mcpServers.ai_memory.command, "ai-memory");
+  assert.deepEqual(parsed.mcpServers.ai_memory.args, ["mcp"]);
+  assert.equal(parsed.mcpServers.ai_memory.env.MEMORY_MCP_CLIENT_ID, "client-a");
+  assert.equal(parsed.mcpServers.ai_memory.env.MEMORY_MCP_ACCESS_KEY, "secret-123");
   assert.equal("ai-memory" in parsed.mcpServers, false);
 });
 
@@ -209,8 +213,9 @@ test("cli install cursor normalizes server key and writes literal auth header", 
   const parsed = JSON.parse(fs.readFileSync(cursorPath, "utf8"));
   assert.equal(Boolean(parsed.mcpServers.ai_memory), true);
   assert.equal(Boolean(parsed.mcpServers["ai-memory"]), false);
-  assert.equal(parsed.mcpServers.ai_memory.headers["x-memory-key"], "secret-cursor");
-  assert.equal(parsed.mcpServers.ai_memory.headers["x-memory-client-id"], "cursor-memory");
+  assert.equal(parsed.mcpServers.ai_memory.type, "stdio");
+  assert.equal(parsed.mcpServers.ai_memory.env.MEMORY_MCP_ACCESS_KEY, "secret-cursor");
+  assert.equal(parsed.mcpServers.ai_memory.env.MEMORY_MCP_CLIENT_ID, "cursor-memory");
 });
 
 test("cli install claude uses and persists a custom MCP server name", () => {
@@ -328,7 +333,10 @@ test("doctor reports missing currentInstallKey, invalid shared install client id
 
   const result = runCli(["doctor"], {
     cwd: tempDir,
-    env: { AI_MEMORY_CONFIG_DIR: configDir }
+    env: {
+      AI_MEMORY_CONFIG_DIR: configDir,
+      AI_MEMORY_DOCTOR_SKIP_ENDPOINT_PROBE: "1"
+    }
   });
 
   assert.equal(result.status, 1);

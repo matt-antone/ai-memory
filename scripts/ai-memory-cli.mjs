@@ -41,7 +41,14 @@ const paths = resolveAiMemoryPaths(process.env.AI_MEMORY_CONFIG_DIR);
 const defaultProjectRef = readText(path.join(cwd, "supabase/.temp/project-ref"))?.trim() || "";
 const defaultUrl = process.env.MEMORY_MCP_URL
   || (defaultProjectRef ? `https://${defaultProjectRef}.supabase.co/functions/v1/memory-mcp` : "https://your-project-ref.supabase.co/functions/v1/memory-mcp");
-let rl = createPromptInterface();
+let rl = null;
+
+function promptInterface() {
+  if (!rl) {
+    rl = createPromptInterface();
+  }
+  return rl;
+}
 
 main()
   .then((code) => {
@@ -54,13 +61,19 @@ main()
     process.exitCode = 1;
   })
   .finally(() => {
-    rl.close();
+    rl?.close();
   });
 
 async function main() {
   if (!command || command === "--help" || command === "-h") {
     printHelp();
     return 0;
+  }
+
+  if (command === "mcp") {
+    const { runStdioMcp } = await import("../src/mcp/run-stdio-mcp.js");
+    await runStdioMcp(process.env);
+    return process.exitCode ?? 0;
   }
 
   if (command === "init") {
@@ -110,6 +123,11 @@ async function main() {
       throw new Error("Uninstall target must be one of: codex, claude, cursor, openclaw");
     }
     await runUninstall(host);
+    return 0;
+  }
+
+  if (command === "sync-secrets") {
+    await runSyncSecrets();
     return 0;
   }
 
@@ -412,10 +430,15 @@ async function installJsonHost(label, hostId, config, accessKey, clientId, agent
     }
   }
 
+  const transport = hostId === "cursor"
+    ? (process.env.AI_MEMORY_CURSOR_TRANSPORT === "http" ? "http" : "stdio")
+    : "http";
+
   const nextContent = upsertJsonServerConfig(baseContent, hostServerName, config.url, clientId, {
     envStyle,
     envFile,
-    accessKey: keyOverride
+    accessKey: keyOverride,
+    transport
   });
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, nextContent);
@@ -799,6 +822,7 @@ async function runDoctor() {
     let hasEnvFile = false;
     let keyHeader = "";
     let selectedServerName = configuredCursorServerName;
+    let entry = {};
     if (exists) {
       const raw = fs.readFileSync(cursorPath, "utf8");
       const configuredInspect = inspectJsonServerConfig(raw, configuredCursorServerName);
@@ -810,7 +834,7 @@ async function runDoctor() {
       hasServer = inspection.exists;
       managed = inspection.managed;
       const parsed = readRawJson(cursorPath) || {};
-      const entry = parsed?.mcpServers?.[selectedServerName] || {};
+      entry = parsed?.mcpServers?.[selectedServerName] || {};
       entryType = String(entry.type || "");
       entryUrl = String(entry.url || "");
       hasEnvFile = Boolean(entry.envFile);
@@ -838,9 +862,22 @@ async function runDoctor() {
       }
     });
     // #endregion
+
+    if (hasServer && exists) {
+      if (entryType === "stdio") {
+        const cmd = String(entry.command || "");
+        const mcpArgs = Array.isArray(entry.args) ? entry.args : [];
+        console.log(`Cursor MCP (${cursorPath}): transport=stdio command=${cmd} args=${JSON.stringify(mcpArgs)}`);
+        if (cmd === "ai-memory" && !commandExists("ai-memory")) {
+          issues.push(`Cursor stdio MCP uses 'ai-memory' but it was not found on PATH (${cursorPath}). Run: ai-memory self-install`);
+        }
+      } else if (entryType === "http") {
+        console.log(`Cursor MCP (${cursorPath}): transport=http url=${entryUrl || "(missing)"}`);
+      }
+    }
   }
 
-  if (configUrl) {
+  if (configUrl && process.env.AI_MEMORY_DOCTOR_SKIP_ENDPOINT_PROBE !== "1") {
     try {
       const envValues = envExists ? readEnvFile(paths.envPath) : {};
       const headers = {
@@ -857,7 +894,8 @@ async function runDoctor() {
       const noAuthResponse = await fetch(configUrl, {
         method: "POST",
         headers,
-        body: probeBody
+        body: probeBody,
+        signal: AbortSignal.timeout(8000)
       });
       // #region agent log
       debugLog({
@@ -886,7 +924,8 @@ async function runDoctor() {
         const authedResponse = await fetch(configUrl, {
           method: "POST",
           headers: authedHeaders,
-          body: probeBody
+          body: probeBody,
+          signal: AbortSignal.timeout(8000)
         });
         // #region agent log
         debugLog({
@@ -932,6 +971,71 @@ async function runDoctor() {
   process.exitCode = 1;
 }
 
+async function runSyncSecrets() {
+  const config = readUserConfig(paths.configPath);
+  const envValues = readEnvFile(paths.envPath);
+  const agentSecrets = parseAgentSecrets(envValues.MEMORY_MCP_AGENT_SECRETS_JSON);
+
+  const scopedInstalls = Object.entries(config.installs || {}).filter(
+    ([, install]) => install.authMode === "scoped"
+  );
+
+  if (scopedInstalls.length === 0) {
+    console.log("No scoped installs found. Nothing to sync.");
+    return;
+  }
+
+  const clients = [];
+  const missing = [];
+  for (const [installKey, install] of scopedInstalls) {
+    const inv = agentSecrets[installKey];
+    if (!inv?.secret || !inv?.clientId) {
+      missing.push(installKey);
+      continue;
+    }
+    clients.push({ client_id: inv.clientId, secret: inv.secret });
+  }
+
+  if (missing.length > 0) {
+    console.warn(`Warning: missing local secrets for install key(s): ${missing.join(", ")}. These will be skipped.`);
+    console.warn("Re-run 'ai-memory init' for each missing key before syncing.");
+  }
+
+  if (clients.length === 0) {
+    throw new Error("No clients with secrets found. Run 'ai-memory init' first.");
+  }
+
+  console.log("\nClients to push to Supabase:");
+  for (const c of clients) {
+    console.log(`  - client_id: ${c.client_id}`);
+  }
+
+  const projectRef = process.env.AI_MEMORY_PROJECT_REF
+    || await ask("Supabase project ref", defaultProjectRef);
+  if (!projectRef || projectRef === "your-project-ref") {
+    throw new Error("A valid Supabase project ref is required.");
+  }
+
+  const confirmed = await confirm(`Push ${clients.length} client(s) to project '${projectRef}'?`, true);
+  if (!confirmed) {
+    console.log("Cancelled.");
+    return;
+  }
+
+  const result = spawnSync(
+    "supabase",
+    ["secrets", "set", "--project-ref", projectRef, `MEMORY_MCP_CLIENTS_JSON=${JSON.stringify(clients)}`],
+    { cwd, encoding: "utf8", stdio: "inherit" }
+  );
+
+  if (result.status !== 0) {
+    throw new Error("supabase secrets set failed. Check the output above.");
+  }
+
+  console.log("\nDone. Redeploy the edge function for the new secrets to take effect:");
+  console.log(`  supabase functions deploy memory-mcp --project-ref ${projectRef}`);
+}
+
 function debugLog({ runId, hypothesisId, location, message, data }) {
   fetch("http://127.0.0.1:7331/ingest/0f7b4832-031b-423c-aeca-769ceeaa022a", {
     method: "POST",
@@ -966,26 +1070,29 @@ function printHelp() {
   console.log(`Usage:
   ai-memory self-install                           Install the CLI globally (survives project deletion)
   ai-memory init                                   Initialize config and credentials
+  ai-memory mcp                                     Run MCP memory server on stdio (for Cursor stdio config)
   ai-memory install <codex|claude|cursor|openclaw>  Install MCP server for a host
   ai-memory install-all [hosts...]                  Install for all hosts (default: codex cursor openclaw)
   ai-memory uninstall <codex|claude|cursor|openclaw> Remove MCP server from a host
   ai-memory status                                  Show config and host install status
   ai-memory doctor                                  Validate config, env, and connectivity
+  ai-memory sync-secrets                            Push all scoped client secrets to Supabase MEMORY_MCP_CLIENTS_JSON
 
 Notes:
   - "install key" is the write identity used across hosts
-  - install commands use the current install key from config`);
+  - install commands use the current install key from config
+  - Cursor defaults to stdio MCP (ai-memory mcp); set AI_MEMORY_CURSOR_TRANSPORT=http to install HTTP to the edge instead`);
 }
 
 async function ask(label, fallback = "") {
   const suffix = fallback ? ` [${fallback}]` : "";
-  const value = (await rl.question(`${label}${suffix}: `)).trim();
+  const value = (await promptInterface().question(`${label}${suffix}: `)).trim();
   return value || fallback;
 }
 
 async function confirm(label, defaultYes = true) {
   const suffix = defaultYes ? " [Y/n]" : " [y/N]";
-  const value = (await rl.question(`${label}${suffix}: `)).trim().toLowerCase();
+  const value = (await promptInterface().question(`${label}${suffix}: `)).trim().toLowerCase();
   if (!value) {
     return defaultYes;
   }

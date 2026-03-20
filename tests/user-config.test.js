@@ -30,7 +30,8 @@ test("normalizeUserConfig migrates legacy clientId and installs into install rec
       authMode: "scoped",
       clientId: "legacy-client",
       serverName: "",
-      namespaces: []
+      namespaces: [],
+      hosts: []
     }
   });
   assert.equal(config.currentInstallKey, "claude");
@@ -63,13 +64,15 @@ test("normalizeUserConfig migrates intermediate clients shape into install auth 
       authMode: "scoped",
       clientId: "client-a",
       serverName: "",
-      namespaces: []
+      namespaces: [],
+      hosts: []
     },
     cursor: {
       authMode: "shared",
       clientId: "",
       serverName: "",
-      namespaces: []
+      namespaces: [],
+      hosts: []
     }
   });
   assert.equal(config.currentInstallKey, "claude");
